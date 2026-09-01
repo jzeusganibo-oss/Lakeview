@@ -1,0 +1,1219 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>lakeview staycation Admin Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      /* Compact calendar styles */
+      #calendar table { width: 100%; max-width: 900px; border-collapse: collapse; background: white; margin: 0 auto; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial; }
+      #calendar th { padding: 6px; text-align: center; color: #475569; font-weight: 700; font-size:11px; }
+      #calendar td { width: 14.285%; vertical-align: top; border: 1px solid #e6eef6; height: 72px; padding: 6px; }
+      #calendar .day-number { float: left; font-size: 11px; color: #64748b; font-weight:600; }
+      #calendar .booked-badge { display:inline-block; background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-top:4px; }
+      #calendar .fully-paid-badge { display:inline-block; background:#16a34a;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-top:2px; }
+      #calendar .pending-badge { display:inline-block; background:#f59e0b;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-top:2px; }
+      #calendar td.booked-cell { background: #fff2f2; border-color: #fca5a5; }
+      #calendar .booking-item { font-size:10px;color:#0f172a;margin-top:3px; line-height:1.05; max-height:30px; overflow:hidden; }
+      #calendar .booking-id { font-size:9px;color:#0f172a; opacity:0.9; }
+      .nav-button { border:1px solid #e2e8f0;padding:6px 8px;border-radius:6px;background:#f8fafc;cursor:pointer }
+      .card { border-radius:12px; border:1px solid #e6eef6; background:white; padding:16px }
+    </style>
+  </head>
+  <body class="min-h-screen bg-slate-100 text-slate-800">
+    <div id="login-screen" class="flex min-h-screen items-center justify-center p-6">
+      <div class="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+        <p class="text-sm uppercase tracking-[0.3em] text-slate-400">lakeview staycation</p>
+        <h1 class="mt-2 text-2xl font-semibold text-slate-900">Sign in</h1>
+        <p class="mt-1 text-sm text-slate-500">Enter your username and password to continue.</p>
+        <form id="login-form" class="mt-6 space-y-4">
+          <label class="block text-sm font-medium text-slate-700">
+            Username
+            <input type="text" id="login-username" required autocomplete="username" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" />
+          </label>
+          <label class="block text-sm font-medium text-slate-700">
+            Password
+            <input type="password" id="login-password" required autocomplete="current-password" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" />
+          </label>
+          <div id="login-error" class="text-sm text-red-600"></div>
+          <button type="submit" class="w-full rounded-lg bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700">Sign In</button>
+        </form>
+      </div>
+    </div>
+
+    <div id="app-shell" class="flex min-h-screen flex-col lg:flex-row" style="display:none;">
+      <aside class="w-full bg-slate-900 p-6 text-slate-100 lg:w-72 lg:min-h-screen">
+        <div class="mb-8">
+          <p class="text-sm uppercase tracking-[0.3em] text-slate-400">lakeview staycation</p>
+          <h1 class="mt-2 text-2xl font-semibold">Admin Dashboard</h1>
+        </div>
+
+        <nav class="space-y-2">
+          <a href="#" id="nav-bookings" class="block rounded-lg bg-slate-800 px-4 py-3 font-medium text-white">Bookings</a>
+          <a href="#" id="nav-agent-payroll" class="block rounded-lg px-4 py-3 text-slate-300 transition hover:bg-slate-800 hover:text-white" style="display:none;">Agent Payroll</a>
+          <a href="#" id="nav-caretaker-ledger" class="admin-only block rounded-lg px-4 py-3 text-slate-300 transition hover:bg-slate-800 hover:text-white" style="display:none;">Caretaker Ledger</a>
+          <a href="#" id="nav-analytics" class="admin-only block rounded-lg px-4 py-3 text-slate-300 transition hover:bg-slate-800 hover:text-white" style="display:none;">Analytics</a>
+        </nav>
+
+        <div class="mt-8 border-t border-slate-800 pt-4 text-sm text-slate-400">
+          <p id="logged-in-as" class="mb-2"></p>
+          <a href="#" id="change-password-link" class="block rounded-lg px-4 py-2 text-slate-300 transition hover:bg-slate-800 hover:text-white" style="display:none;">Change password</a>
+          <a href="#" id="logout-link" class="block rounded-lg px-4 py-2 text-slate-300 transition hover:bg-slate-800 hover:text-white">Log out</a>
+        </div>
+      </aside>
+
+      <main class="flex-1 p-4 sm:p-6 lg:p-8">
+        <div class="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p class="text-sm font-medium uppercase tracking-[0.25em] text-slate-500">Operations</p>
+            <h2 class="text-3xl font-semibold">Booking Overview</h2>
+          </div>
+          <div class="rounded-full bg-emerald-100 px-4 py-2 text-sm font-medium text-emerald-700">Live bookings enabled</div>
+        </div>
+
+        <div class="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+          <section class="card xl:col-span-2">
+            <div class="mb-4 flex items-center justify-between">
+              <div>
+                <h3 class="text-xl font-semibold">Bookings Calendar</h3>
+                <p class="mt-1 text-sm text-slate-500">Visual calendar showing booked dates per unit.</p>
+              </div>
+              <div class="flex items-center gap-4">
+                <label class="block text-sm font-medium text-slate-700">Unit</label>
+                <select id="unit-filter" class="border rounded p-2">
+                  <option value="">All units</option>
+                </select>
+              </div>
+            </div>
+
+            <div id="calendar">
+              <div class="flex justify-between items-center mb-2">
+                <div></div>
+                <div class="flex items-center gap-2">
+                  <button id="prev-month" class="nav-button">«</button>
+                  <span id="month-label" class="mx-2 font-semibold"></span>
+                  <button id="next-month" class="nav-button">»</button>
+                </div>
+              </div>
+              <div id="calendar-grid"></div>
+              <div id="month-footer" class="mt-2 text-sm text-slate-500 text-center uppercase"></div>
+            </div>
+              <div id="calendar-status" class="mt-2 text-sm text-slate-500"></div>
+          </section>
+
+          <section class="card">
+            <div class="mb-6">
+              <h3 class="text-xl font-semibold">Quick Booking Entry</h3>
+              <p class="mt-1 text-sm text-slate-500">Capture a new lakeview staycation booking in seconds.</p>
+            </div>
+
+            <form id="booking-form" class="space-y-4">
+              <div class="grid gap-4 md:grid-cols-2">
+                <label class="block text-sm font-medium text-slate-700">
+                  Unit ID
+                  <select name="unit_id" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600">
+                    <option value="635">635</option>
+                    <option value="1931">1931</option>
+                    <option value="1127">1127</option>
+                    <option value="1228">1228</option>
+                    <option value="1230">1230</option>
+                  </select>
+                </label>
+
+                <label class="block text-sm font-medium text-slate-700">
+                  Agent Name
+                  <select name="agent_name" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600">
+                    <option value="">(none)</option>
+                    <option value="Alexis">Alexis</option>
+                    <option value="Maricon">Maricon</option>
+                    <option value="Kath">Kath</option>
+                    <option value="Admin">Admin</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="grid gap-4 md:grid-cols-2">
+                <label class="block text-sm font-medium text-slate-700">
+                  Check-in Date
+                  <input type="date" name="check_in" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" />
+                </label>
+
+                <label class="block text-sm font-medium text-slate-700">
+                  Check-out Date
+                  <input type="date" name="check_out" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" />
+                </label>
+              </div>
+
+              <div class="grid gap-4 md:grid-cols-2">
+                <label class="block text-sm font-medium text-slate-700">
+                  Amount
+                  <input type="number" step="0.01" name="amount" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" placeholder="0.00" />
+                </label>
+
+                <label class="block text-sm font-medium text-slate-700">
+                  Parking Fee <span class="font-normal text-slate-400">(optional)</span>
+                  <input type="number" step="0.01" name="parking_fee" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" placeholder="0.00" />
+                </label>
+              </div>
+
+              <div class="grid gap-4 md:grid-cols-2">
+                <label class="block text-sm font-medium text-slate-700">
+                  Reservation Fee
+                  <input type="number" step="0.01" name="reservation_fee" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" placeholder="0.00" />
+                </label>
+
+                <label class="block text-sm font-medium text-slate-700">
+                  Payment Method
+                  <select name="payment_method" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600">
+                    <option value="">(select)</option>
+                    <option value="Cash">Cash</option>
+                    <option value="GCash">GCash</option>
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="PayMaya">PayMaya</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </label>
+              </div>
+
+              <label class="block text-sm font-medium text-slate-700">
+                Balance
+                <input type="number" step="0.01" name="balance" id="balance-input" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" placeholder="0.00" />
+              </label>
+
+              <input type="hidden" name="username" />
+              <input type="hidden" name="password" />
+
+              <div id="form-message" class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600"></div>
+
+              <button type="submit" class="w-full rounded-lg bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700">Create Booking</button>
+            </form>
+          </section>
+
+          <section class="space-y-6">
+            <div class="card">
+              <h3 class="text-xl font-semibold">Today's Activity</h3>
+              <div class="mt-4 space-y-4">
+                <div class="rounded-xl bg-emerald-50 p-4">
+                  <p class="text-sm font-medium text-emerald-700">Check-ins</p>
+                  <p id="checkins-count" class="mt-1 text-2xl font-semibold text-emerald-900">0</p>
+                </div>
+                <div class="rounded-xl bg-amber-50 p-4">
+                  <p class="text-sm font-medium text-amber-700">Check-outs</p>
+                  <p id="checkouts-count" class="mt-1 text-2xl font-semibold text-amber-900">0</p>
+                </div>
+                <div class="rounded-xl bg-rose-50 p-4">
+                  <p class="text-sm font-medium text-rose-700">Cleanings required</p>
+                  <p id="cleanings-count" class="mt-1 text-2xl font-semibold text-rose-900">0</p>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+        <div id="agent-payroll-panel" style="display:none; margin-top:12px;">
+          <div class="card">
+            <div class="flex items-center justify-between">
+              <h3 class="text-lg font-semibold">Agent Payroll</h3>
+              <button id="close-payroll" class="nav-button">Close</button>
+            </div>
+            <div id="payroll-message" class="mt-3 text-sm text-slate-600"></div>
+            <div id="payroll-table-container" class="mt-3 overflow-auto"></div>
+          </div>
+        </div>
+        <div id="caretaker-ledger-panel" style="display:none; margin-top:12px;">
+          <div class="card">
+            <div class="flex items-center justify-between">
+              <h3 class="text-lg font-semibold">Caretaker Ledger</h3>
+              <button id="close-caretaker" class="nav-button">Close</button>
+            </div>
+            <div id="caretaker-message" class="mt-3 text-sm text-slate-600"></div>
+            <div id="caretaker-table-container" class="mt-3 overflow-auto"></div>
+          </div>
+        </div>
+        <div id="analytics-panel" style="display:none; margin-top:12px;">
+          <div class="card">
+            <div class="flex items-center justify-between">
+              <h3 class="text-lg font-semibold">Analytics</h3>
+              <button id="close-analytics" class="nav-button">Close</button>
+            </div>
+            <div id="analytics-message" class="mt-3 text-sm text-slate-600"></div>
+            <div id="analytics-chart-container" class="mt-3"></div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <div id="change-password-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" style="display:none;">
+      <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-lg">
+        <div class="mb-4 flex items-center justify-between">
+          <h3 class="text-lg font-semibold text-slate-900">Change password</h3>
+          <button type="button" id="close-change-password" class="nav-button">Close</button>
+        </div>
+        <form id="change-password-form" class="space-y-4">
+          <label class="block text-sm font-medium text-slate-700">
+            Current password
+            <input type="password" id="cp-current" required autocomplete="current-password" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" />
+          </label>
+          <label class="block text-sm font-medium text-slate-700">
+            New password
+            <input type="password" id="cp-new" required minlength="8" autocomplete="new-password" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" />
+          </label>
+          <label class="block text-sm font-medium text-slate-700">
+            Confirm new password
+            <input type="password" id="cp-confirm" required minlength="8" autocomplete="new-password" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" />
+          </label>
+          <div id="change-password-message" class="text-sm"></div>
+          <button type="submit" class="w-full rounded-lg bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700">Update password</button>
+        </form>
+      </div>
+    </div>
+
+    <div id="booking-edit-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" style="display:none;">
+      <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto">
+        <div class="mb-4 flex items-center justify-between">
+          <h3 class="text-lg font-semibold text-slate-900">Booking summary</h3>
+          <button type="button" id="close-booking-edit" class="nav-button">Close</button>
+        </div>
+        <form id="booking-edit-form" class="space-y-4">
+          <input type="hidden" name="booking_id" />
+          <p class="text-sm text-slate-500">Booking ID: <span id="edit-booking-id" class="font-medium text-slate-700"></span></p>
+          <p class="text-sm text-slate-500">Status: <span id="edit-booking-status" class="inline-block rounded-full px-2 py-0.5 text-xs font-semibold"></span></p>
+
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class="block text-sm font-medium text-slate-700">
+              Unit ID
+              <select name="unit_id" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600"></select>
+            </label>
+            <label class="block text-sm font-medium text-slate-700">
+              Agent Name
+              <select name="agent_name" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600">
+                <option value="">(none)</option>
+                <option value="Alexis">Alexis</option>
+                <option value="Maricon">Maricon</option>
+                <option value="Kath">Kath</option>
+                <option value="Admin">Admin</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class="block text-sm font-medium text-slate-700">
+              Check-in Date
+              <input type="date" name="check_in" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" />
+            </label>
+            <label class="block text-sm font-medium text-slate-700">
+              Check-out Date
+              <input type="date" name="check_out" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" />
+            </label>
+          </div>
+
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class="block text-sm font-medium text-slate-700">
+              Amount
+              <input type="number" step="0.01" name="amount" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" placeholder="0.00" />
+            </label>
+            <label class="block text-sm font-medium text-slate-700">
+              Parking Fee <span class="font-normal text-slate-400">(optional)</span>
+              <input type="number" step="0.01" name="parking_fee" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" placeholder="0.00" />
+            </label>
+          </div>
+
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class="block text-sm font-medium text-slate-700">
+              Reservation Fee
+              <input type="number" step="0.01" name="reservation_fee" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" placeholder="0.00" />
+            </label>
+            <label class="block text-sm font-medium text-slate-700">
+              Payment Method
+              <select name="payment_method" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600">
+                <option value="">(select)</option>
+                <option value="Cash">Cash</option>
+                <option value="GCash">GCash</option>
+                <option value="Bank Transfer">Bank Transfer</option>
+                <option value="PayMaya">PayMaya</option>
+                <option value="Other">Other</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class="block text-sm font-medium text-slate-700">
+              Balance
+              <input type="number" step="0.01" name="balance" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" placeholder="0.00" />
+            </label>
+            <label class="block text-sm font-medium text-slate-700">
+              Paid Balance
+              <input type="number" step="0.01" name="paid_balance" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" placeholder="0.00" />
+            </label>
+          </div>
+
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class="block text-sm font-medium text-slate-700">
+              Balance Payment Method
+              <select name="balance_payment_method" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600">
+                <option value="">(select)</option>
+                <option value="GCash">GCash</option>
+                <option value="Bank">Bank</option>
+                <option value="Czarina">Czarina</option>
+                <option value="Tess">Tess</option>
+              </select>
+            </label>
+          </div>
+
+          <div id="booking-edit-message" class="text-sm"></div>
+          <button type="submit" class="w-full rounded-lg bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700">Save changes</button>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      // Derive allowed units from the booking form when template injection is not available.
+      try{
+        window.ALLOWED_UNITS = Array.from(document.querySelectorAll('select[name="unit_id"] option')).map(o=>o.value).filter(Boolean);
+      }catch(e){ window.ALLOWED_UNITS = []; }
+    </script>
+
+    <script>
+      const form = document.getElementById('booking-form');
+      const messageBox = document.getElementById('form-message');
+      let currentDate = new Date();
+      let selectedUnit = '';
+      let bookingsById = {};
+
+      // Balance is auto-computed from amount/parking/reservation fees, but the
+      // agent can still overwrite it manually — once edited, stop auto-updating it.
+      let balanceManuallyEdited = false;
+      const balanceInput = document.getElementById('balance-input');
+      function updateBalancePreview(){
+        if (balanceManuallyEdited) return;
+        const amount = parseFloat(form.querySelector('input[name="amount"]')?.value) || 0;
+        const parkingFee = parseFloat(form.querySelector('input[name="parking_fee"]')?.value) || 0;
+        const reservationFee = parseFloat(form.querySelector('input[name="reservation_fee"]')?.value) || 0;
+        const balance = amount + parkingFee - reservationFee;
+        if (balanceInput) balanceInput.value = balance.toFixed(2);
+      }
+      ['amount','parking_fee','reservation_fee'].forEach(name=>{
+        const input = form.querySelector(`input[name="${name}"]`);
+        if (input) input.addEventListener('input', updateBalancePreview);
+      });
+      if (balanceInput) balanceInput.addEventListener('input', ()=>{ balanceManuallyEdited = true; });
+
+      // Booking summary/edit modal — clicking a booking in the calendar opens this pre-filled form.
+      const bookingEditModal = document.getElementById('booking-edit-modal');
+      const bookingEditForm = document.getElementById('booking-edit-form');
+      const bookingEditMessage = document.getElementById('booking-edit-message');
+      const closeBookingEdit = document.getElementById('close-booking-edit');
+      const editUnitSelect = bookingEditForm?.querySelector('select[name="unit_id"]');
+      if (editUnitSelect){
+        editUnitSelect.innerHTML = (window.ALLOWED_UNITS || []).map(u => `<option value="${u}">${u}</option>`).join('');
+      }
+
+      function toDateInputValue(v){
+        const d = normalizeDateString(v);
+        if (!d) return '';
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+      }
+
+      function hideBookingEditModal(){
+        if (bookingEditModal) bookingEditModal.style.display = 'none';
+        if (bookingEditMessage){ bookingEditMessage.textContent = ''; bookingEditMessage.className = 'text-sm'; }
+      }
+
+      function openBookingModal(bookingId){
+        const b = bookingsById[bookingId];
+        if (!b || !bookingEditForm) return;
+        bookingEditForm.querySelector('input[name="booking_id"]').value = bookingId;
+        const idLabel = document.getElementById('edit-booking-id'); if (idLabel) idLabel.textContent = bookingId;
+        const statusLabel = document.getElementById('edit-booking-status');
+        if (statusLabel){
+          const statusText = b.status || 'Pending';
+          statusLabel.textContent = statusText;
+          const isFullyPaid = statusText.trim().toLowerCase() === 'fully paid';
+          statusLabel.style.background = isFullyPaid ? '#dcfce7' : '#f1f5f9';
+          statusLabel.style.color = isFullyPaid ? '#166534' : '#475569';
+        }
+        if (editUnitSelect) editUnitSelect.value = String(b.unit_id || '');
+        bookingEditForm.querySelector('select[name="agent_name"]').value = b.agent_name || '';
+        bookingEditForm.querySelector('input[name="check_in"]').value = toDateInputValue(b.check_in);
+        bookingEditForm.querySelector('input[name="check_out"]').value = toDateInputValue(b.check_out);
+        bookingEditForm.querySelector('input[name="amount"]').value = b.amount || '';
+        bookingEditForm.querySelector('input[name="parking_fee"]').value = b.parking_fee || '';
+        bookingEditForm.querySelector('input[name="reservation_fee"]').value = b.reservation_fee || '';
+        bookingEditForm.querySelector('select[name="payment_method"]').value = b.payment_method || '';
+        bookingEditForm.querySelector('input[name="balance"]').value = b.balance || '';
+        bookingEditForm.querySelector('input[name="paid_balance"]').value = b.paid_balance || '';
+        bookingEditForm.querySelector('select[name="balance_payment_method"]').value = b.balance_payment_method || '';
+        if (bookingEditMessage){ bookingEditMessage.textContent = ''; bookingEditMessage.className = 'text-sm'; }
+        if (bookingEditModal) bookingEditModal.style.display = 'flex';
+      }
+
+      if (closeBookingEdit) closeBookingEdit.addEventListener('click', hideBookingEditModal);
+
+      if (bookingEditForm){
+        bookingEditForm.addEventListener('submit', async (ev)=>{
+          ev.preventDefault();
+          if (bookingEditMessage){ bookingEditMessage.textContent = 'Saving...'; bookingEditMessage.className = 'text-sm text-slate-500'; }
+          const username = document.querySelector('input[name="username"]')?.value || '';
+          const password = document.querySelector('input[name="password"]')?.value || '';
+          try{
+            const base = getApiBase();
+            const body = new FormData(bookingEditForm);
+            const res = await fetch(base + '/api/bookings/update', {
+              method: 'POST',
+              headers: { 'Authorization': 'Basic ' + btoa(username + ':' + password) },
+              body,
+            });
+            const data = await res.json().catch(()=>({}));
+            if (!res.ok){
+              if (bookingEditMessage){ bookingEditMessage.textContent = data.detail || 'Failed to update booking.'; bookingEditMessage.className = 'text-sm text-red-600'; }
+              return;
+            }
+            if (bookingEditMessage){ bookingEditMessage.textContent = 'Booking updated.'; bookingEditMessage.className = 'text-sm text-emerald-600'; }
+            if (data.booking && data.booking.balance !== undefined){
+              const balanceField = bookingEditForm.querySelector('input[name="balance"]');
+              if (balanceField) balanceField.value = data.booking.balance;
+            }
+            const statusLabel = document.getElementById('edit-booking-status');
+            if (statusLabel && data.booking){
+              const statusText = data.booking.status || 'Pending';
+              statusLabel.textContent = statusText;
+              const isFullyPaid = statusText.trim().toLowerCase() === 'fully paid';
+              statusLabel.style.background = isFullyPaid ? '#dcfce7' : '#f1f5f9';
+              statusLabel.style.color = isFullyPaid ? '#166534' : '#475569';
+            }
+            loadCalendar();
+            setTimeout(hideBookingEditModal, 900);
+          }catch(e){
+            if (bookingEditMessage){ bookingEditMessage.textContent = 'Network error updating booking.'; bookingEditMessage.className = 'text-sm text-red-600'; }
+          }
+        });
+      }
+
+      function pad(n){return n<10?('0'+n):String(n);} 
+      function monthFooterLabel(d){
+        const m = d.getMonth()+1; const name = d.toLocaleString('default',{month:'long'}).toUpperCase(); const y = d.getFullYear();
+        return `${pad(m)} ${name} ${y}`;
+      }
+
+      function normalizeDateString(s){
+        if (!s) return null;
+        // If already a Date object
+        if (s instanceof Date) return s;
+        // Handle plain ISO date `YYYY-MM-DD` as a local date (avoid UTC parsing shifts)
+        const isoDate = String(s).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (isoDate){ const yyyy = parseInt(isoDate[1],10), mm = parseInt(isoDate[2],10), dd = parseInt(isoDate[3],10); return new Date(yyyy, mm-1, dd); }
+        // Fallback: attempt JS Date parsing (for full ISO datetimes)
+        const d = new Date(s);
+        if (!isNaN(d)) return d;
+        // Handle DD/MM/YYYY or DD-MM-YYYY
+        const m = String(s).match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        if (m) { const dd = parseInt(m[1],10), mm = parseInt(m[2],10), yyyy = parseInt(m[3],10); return new Date(yyyy, mm-1, dd); }
+        return null;
+      }
+
+      function escapeHTML(str){
+        if (!str) return '';
+        return String(str).replace(/[&<>"]+/g, function (s) {
+          return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[s]);
+        });
+      }
+
+      function populateUnitFilter(events){
+        const unitFilter = document.getElementById('unit-filter');
+        if (!unitFilter) return;
+        const existing = unitFilter.value;
+        const fromQuick = Array.from(document.querySelectorAll('select[name="unit_id"] option')).map(o=>o.value).filter(Boolean);
+        const fromEvents = Array.from(new Set(events.map(e=>String(e.unit_id)).filter(Boolean)));
+        const options = fromQuick.length? fromQuick : fromEvents;
+        unitFilter.innerHTML = '<option value="">All units</option>' + options.map(u => `<option value="${u}">${u}</option>`).join('');
+        if (existing) unitFilter.value = existing;
+        unitFilter.removeEventListener('change', onUnitChange);
+        unitFilter.addEventListener('change', onUnitChange);
+      }
+
+      function onUnitChange(e){ selectedUnit = e.target.value || ''; loadCalendar(); }
+
+      function renderCalendar(events){
+        const container = document.getElementById('calendar-grid');
+        container.innerHTML = '';
+        const monthLabel = document.getElementById('month-label');
+        monthLabel.textContent = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' }).toUpperCase();
+
+        const table = document.createElement('table');
+        const thead = document.createElement('thead');
+        const trh = document.createElement('tr');
+        const days = ['S','M','T','W','T','F','S'];
+        days.forEach(d=>{ const th = document.createElement('th'); th.textContent = d; trh.appendChild(th); });
+        thead.appendChild(trh); table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+        const year = currentDate.getFullYear(); const month = currentDate.getMonth();
+        const first = new Date(year, month, 1); const last = new Date(year, month+1, 0); const total = last.getDate();
+        let week = document.createElement('tr');
+        for (let i=0;i<first.getDay();i++){ const td=document.createElement('td'); td.style.height='72px'; week.appendChild(td);} 
+        for (let d=1; d<=total; d++){
+          const date = new Date(year, month, d);
+          const td = document.createElement('td'); td.style.verticalAlign='top'; td.style.padding='6px'; td.style.border='1px solid #e6eef6'; td.style.height='72px';
+          const dn = document.createElement('div'); dn.className='day-number'; dn.textContent=d; td.appendChild(dn);
+
+          const dayEvents = events.filter(e=>{
+            const ci = normalizeDateString(e.start) || normalizeDateString(e.check_in) || new Date(e.start);
+            const co = normalizeDateString(e.end) || normalizeDateString(e.check_out) || new Date(e.end);
+            if (!ci) return false;
+            const inRange = (ci <= date && date < (co || new Date(ci.getTime()+24*3600*1000)));
+            return inRange && (selectedUnit === '' || String(e.unit_id) === String(selectedUnit));
+          });
+
+          if (dayEvents.length) {
+            td.classList.add('booked-cell');
+            const b = document.createElement('div'); b.className='booked-badge'; b.textContent= dayEvents.length>1? 'Booked ('+dayEvents.length+')':'Booked'; td.appendChild(b);
+
+            // group bookings into fully-paid vs pending, each shown once with its unit IDs below it
+            const isPaid = ev => String(ev.status||'').trim().toLowerCase() === 'fully paid';
+            const fullyPaidEvents = dayEvents.filter(isPaid);
+            const pendingEvents = dayEvents.filter(ev => !isPaid(ev));
+
+            const makeUnitEl = (ev) => {
+              const unitEl = document.createElement('div');
+              unitEl.className = 'booking-id';
+              unitEl.textContent = String(ev.unit_id || '');
+              if (ev.booking_id || ev.id){
+                unitEl.style.cursor = 'pointer';
+                unitEl.style.textDecoration = 'underline';
+                unitEl.addEventListener('click', (e)=>{ e.stopPropagation(); openBookingModal(ev.booking_id || ev.id); });
+              }
+              return unitEl;
+            };
+
+            const renderStatusGroup = (groupEvents, badgeClass, badgeText) => {
+              if (!groupEvents.length) return;
+              const badge = document.createElement('div'); badge.className = badgeClass; badge.textContent = badgeText; td.appendChild(badge);
+              const seenUnits = new Set();
+              groupEvents.forEach(ev=>{
+                const u = String(ev.unit_id || '');
+                if (seenUnits.has(u)) return;
+                seenUnits.add(u);
+                td.appendChild(makeUnitEl(ev));
+              });
+            };
+
+            renderStatusGroup(fullyPaidEvents, 'fully-paid-badge', 'Fully Paid');
+            renderStatusGroup(pendingEvents, 'pending-badge', 'Pending');
+
+            // add tooltip/title with details
+            const tooltip = dayEvents.map(ev=> `${ev.booking_id||ev.id||''} ${ev.agent_name||''} ${ev.status?('- '+ev.status):''}`.trim()).join(' | ');
+            td.setAttribute('title', tooltip);
+          }
+
+          week.appendChild(td);
+          if (date.getDay()===6){ tbody.appendChild(week); week=document.createElement('tr'); }
+        }
+        if (week.children.length) tbody.appendChild(week);
+        table.appendChild(tbody); container.appendChild(table);
+
+        const footer = document.getElementById('month-footer'); if (footer) footer.textContent = monthFooterLabel(currentDate);
+      }
+
+      // Determine a sensible base URL to call the API from the page.
+      function getApiBase(){
+        try{
+          const origin = window.location?.origin || '';
+          // When opened as file:// origin may be 'null' or empty — fall back to localhost server
+          if (!origin || origin === 'null' || origin === 'file://'){
+            return 'http://127.0.0.1:8000';
+          }
+          return origin;
+        }catch(e){ return 'http://127.0.0.1:8000'; }
+      }
+
+      async function loadCalendar(){
+        const statusEl = document.getElementById('calendar-status');
+        try{
+          const unitParam = selectedUnit ? `?unit=${encodeURIComponent(selectedUnit)}` : '';
+          const base = getApiBase();
+          const url = base + '/api/bookings' + unitParam;
+          const resp = await fetch(url, { cache: 'no-store', credentials: 'same-origin' });
+          if (!resp.ok){
+            const text = await resp.text().catch(()=>'<no-body>');
+            const msg = `Error loading bookings: ${resp.status} ${resp.statusText} - ${text}`;
+            console.error(msg);
+            if (statusEl) statusEl.textContent = msg;
+            renderCalendar([]);
+            return;
+          }
+          const text = await resp.text();
+          let data;
+          try { data = JSON.parse(text); } catch (err) {
+            console.error('Invalid JSON from /api/bookings', text);
+            if (statusEl) statusEl.textContent = 'Invalid JSON returned from bookings API';
+            renderCalendar([]);
+            return;
+          }
+          const bookings = data.bookings || data || [];
+          bookingsById = {};
+          bookings.forEach(b=>{ const id = b.booking_id || b.id; if (id) bookingsById[id] = b; });
+          const events = bookings.map(b=>({ id:b.booking_id||b.id, booking_id:b.booking_id||b.id, unit_id:b.unit_id, agent_name: b.agent_name || b.guest_name || '', status: b.status || '', title:`${b.guest_name||b.agent_name||'Booking'} (${b.unit_id})`, start:b.check_in||b.start, end:b.check_out||b.end }));
+
+          // Update Today's Activity counters based on bookings in the sheet
+          try{
+            const today = new Date();
+            const isSameDay = (a,b)=> a && b && a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+            let checkins = 0, checkouts = 0, cleanings = 0;
+            bookings.forEach(b=>{
+              const ci = normalizeDateString(b.check_in || b.start);
+              const co = normalizeDateString(b.check_out || b.end);
+              if (isSameDay(ci, today)) checkins += 1;
+              if (isSameDay(co, today)) checkouts += 1;
+              // simple heuristic: a cleaning is required for every checkout today
+              if (isSameDay(co, today)) cleanings += 1;
+            });
+            const elIn = document.getElementById('checkins-count');
+            const elOut = document.getElementById('checkouts-count');
+            const elClean = document.getElementById('cleanings-count');
+            if (elIn) elIn.textContent = String(checkins);
+            if (elOut) elOut.textContent = String(checkouts);
+            if (elClean) elClean.textContent = String(cleanings);
+          }catch(e){ console.error('update todays activity', e); }
+          populateUnitFilter(events);
+          renderCalendar(events);
+          if (statusEl) statusEl.textContent = `Loaded ${events.length} bookings (${new Date().toLocaleTimeString()})`;
+        }catch(e){ console.error('loadCalendar',e); if (statusEl) statusEl.textContent=`Error loading bookings: ${e.message || e}`; renderCalendar([]); }
+      }
+
+      // Diagnostic helper: try multiple fetch variants and report results to the page
+      async function runNetworkChecks(){
+        const statusEl = document.getElementById('calendar-status');
+        const tries = [];
+        const unitParam = selectedUnit ? `?unit=${encodeURIComponent(selectedUnit)}` : '';
+        const origins = [window.location.origin, 'http://127.0.0.1:8000', 'http://localhost:8000'];
+        const paths = ['/api/bookings'+unitParam, '/api/bookings'+unitParam, 'api/bookings'+unitParam];
+        for (const o of origins){
+          for (const p of paths){
+            const u = (o||'') + p;
+            try{
+              const res = await fetch(u, {cache:'no-store', credentials:'same-origin'});
+              const txt = await res.text().catch(()=>'<no-body>');
+              tries.push(`${u} -> ${res.status} ${res.statusText} -> ${txt.slice(0,200)}`);
+            }catch(err){
+              tries.push(`${u} -> ERROR: ${err.message || err}`);
+            }
+          }
+        }
+        if (statusEl) statusEl.innerText = tries.join('\n');
+        console.log('Network diagnostics:\n' + tries.join('\n'));
+        return tries;
+      }
+
+      form.addEventListener('submit', async (ev)=>{
+        ev.preventDefault();
+        messageBox.textContent='Submitting booking...';
+        messageBox.className='rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600';
+        const formData = new FormData(form);
+        const username = formData.get('username')?.toString().trim();
+        const password = formData.get('password')?.toString();
+        const headers = {};
+        if (username && password) headers.Authorization = 'Basic '+btoa(`${username}:${password}`);
+        try{
+          const base = getApiBase();
+          const postUrl = base + '/api/bookings/create';
+          const res = await fetch(postUrl,{ method:'POST', body: formData, headers });
+          // capture raw response body for diagnostics
+          let raw = '';
+          try{ raw = await res.text(); }catch(e){ raw = '<no-body>'; }
+          let json = null;
+          try{ json = JSON.parse(raw); }catch(e){ json = null; }
+
+          if (!res.ok){
+            const detail = (json && (json.detail || json.error || json.message)) || raw || `${res.status} ${res.statusText}`;
+            const msg = `Server ${res.status} ${res.statusText}: ${detail}`;
+            console.error('Booking create failed:', msg, raw);
+            messageBox.innerHTML = `<div style="font-weight:600;color:#7f1d1d">${escapeHTML(msg)}</div><pre style="white-space:pre-wrap;margin-top:6px;color:#7f1d1d">${escapeHTML(raw)}</pre>`;
+            messageBox.className='rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700';
+            return;
+          }
+
+          const result = json || {};
+          messageBox.textContent = `Booking created: ${result.booking?.booking_id || result.booking_id || ''}`;
+          messageBox.className='rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700';
+          form.reset(); loadCalendar(); balanceManuallyEdited = false; updateBalancePreview();
+        }catch(err){
+          console.error('Booking create network error', err);
+          const msg = err && err.message ? err.message : String(err);
+          messageBox.innerHTML = `<div style="font-weight:600;color:#7f1d1d">${escapeHTML(msg)}</div>`;
+          messageBox.className='rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700';
+        }
+      });
+
+      document.addEventListener('DOMContentLoaded', ()=>{ 
+        // wire unit select from quick booking options
+        const unitFilter = document.getElementById('unit-filter');
+        const unitSelect = document.querySelector('select[name="unit_id"]');
+        if (unitFilter && unitSelect) {
+          unitFilter.innerHTML = '<option value="">All units</option>' + Array.from(unitSelect.options).map(o=> o.value ? `<option value="${o.value}">${o.value}</option>` : '').join('');
+          unitFilter.addEventListener('change', onUnitChange);
+        }
+        const prevBtn = document.getElementById('prev-month');
+        const nextBtn = document.getElementById('next-month');
+        if (prevBtn) prevBtn.addEventListener('click', ()=>{ currentDate.setMonth(currentDate.getMonth()-1); loadCalendar(); });
+        if (nextBtn) nextBtn.addEventListener('click', ()=>{ currentDate.setMonth(currentDate.getMonth()+1); loadCalendar(); });
+        // initial load
+        loadCalendar();
+        // periodic refresh
+        setInterval(loadCalendar, 30000);
+
+          // Show admin-only nav links (Caretaker Ledger, Analytics) only for admins.
+          // Agent Payroll is visible to admins AND booking agents (agents only ever see their own rows, enforced server-side).
+          // Booking agents also get a "Change password" link; admins manage their password via env vars instead.
+          async function refreshRoleVisibility(){
+            const adminLinks = document.querySelectorAll('.admin-only');
+            const payrollLink = document.getElementById('nav-agent-payroll');
+            const changePasswordLink = document.getElementById('change-password-link');
+            const username = document.querySelector('input[name="username"]')?.value || '';
+            const password = document.querySelector('input[name="password"]')?.value || '';
+            if (!username || !password){
+              adminLinks.forEach(el=> el.style.display = 'none');
+              if (payrollLink) payrollLink.style.display = 'none';
+              if (changePasswordLink) changePasswordLink.style.display = 'none';
+              return;
+            }
+            try{
+              const base = getApiBase();
+              const res = await fetch(base + '/api/whoami', { headers: { 'Authorization': 'Basic ' + btoa(username + ':' + password) } });
+              if (!res.ok){
+                adminLinks.forEach(el=> el.style.display = 'none');
+                if (payrollLink) payrollLink.style.display = 'none';
+                if (changePasswordLink) changePasswordLink.style.display = 'none';
+                return;
+              }
+              const data = await res.json();
+              const isAdmin = data && data.type === 'admin';
+              const isAgent = data && data.is_agent;
+              adminLinks.forEach(el=> el.style.display = isAdmin ? '' : 'none');
+              if (payrollLink) payrollLink.style.display = (isAdmin || isAgent) ? '' : 'none';
+              if (changePasswordLink) changePasswordLink.style.display = isAgent ? '' : 'none';
+            }catch(e){
+              adminLinks.forEach(el=> el.style.display = 'none');
+              if (payrollLink) payrollLink.style.display = 'none';
+              if (changePasswordLink) changePasswordLink.style.display = 'none';
+            }
+          }
+
+          // Login gate — verifies credentials against /api/whoami, then reveals the dashboard.
+          const AUTH_STORAGE_KEY = 'lakeview_auth';
+          const loginScreen = document.getElementById('login-screen');
+          const appShell = document.getElementById('app-shell');
+          const loginForm = document.getElementById('login-form');
+          const loginError = document.getElementById('login-error');
+          const loggedInAs = document.getElementById('logged-in-as');
+          const logoutLink = document.getElementById('logout-link');
+
+          function enterApp(username, password, actorName, actorType){
+            const uInput = document.querySelector('input[name="username"]');
+            const pInput = document.querySelector('input[name="password"]');
+            if (uInput) uInput.value = username;
+            if (pInput) pInput.value = password;
+            if (loginScreen) loginScreen.style.display = 'none';
+            if (appShell) appShell.style.display = '';
+            if (loggedInAs) loggedInAs.textContent = actorName + (actorType === 'admin' ? ' (Admin)' : '');
+            refreshRoleVisibility();
+          }
+
+          async function tryLogin(username, password){
+            try{
+              const base = getApiBase();
+              const res = await fetch(base + '/api/whoami', { headers: { 'Authorization': 'Basic ' + btoa(username + ':' + password) } });
+              if (!res.ok) return { error: 'invalid' };
+              const data = await res.json();
+              return { name: data.name || username, type: data.type };
+            }catch(e){ return { error: 'network' }; }
+          }
+
+          if (loginForm){
+            loginForm.addEventListener('submit', async (ev)=>{
+              ev.preventDefault();
+              if (loginError) loginError.textContent = '';
+              const username = document.getElementById('login-username')?.value || '';
+              const password = document.getElementById('login-password')?.value || '';
+              const actor = await tryLogin(username, password);
+              if (!actor || actor.error){
+                if (loginError) loginError.textContent = actor && actor.error === 'network' ? 'Cannot reach the server. Please check that it is running and try again.' : 'Invalid username or password.';
+                return;
+              }
+              try{ sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ username, password })); }catch(e){}
+              enterApp(username, password, actor.name, actor.type);
+            });
+          }
+
+          if (logoutLink){
+            logoutLink.addEventListener('click', (ev)=>{
+              ev.preventDefault();
+              try{ sessionStorage.removeItem(AUTH_STORAGE_KEY); }catch(e){}
+              window.location.reload();
+            });
+          }
+
+          // Change password (booking agents only — admin password is managed via env vars)
+          const changePasswordLink = document.getElementById('change-password-link');
+          const changePasswordModal = document.getElementById('change-password-modal');
+          const closeChangePassword = document.getElementById('close-change-password');
+          const changePasswordForm = document.getElementById('change-password-form');
+          const changePasswordMessage = document.getElementById('change-password-message');
+
+          function hideChangePasswordModal(){
+            if (changePasswordModal) changePasswordModal.style.display = 'none';
+            if (changePasswordForm) changePasswordForm.reset();
+            if (changePasswordMessage){ changePasswordMessage.textContent = ''; changePasswordMessage.className = 'text-sm'; }
+          }
+
+          if (changePasswordLink){
+            changePasswordLink.addEventListener('click', (ev)=>{
+              ev.preventDefault();
+              if (changePasswordModal) changePasswordModal.style.display = 'flex';
+            });
+          }
+          if (closeChangePassword) closeChangePassword.addEventListener('click', hideChangePasswordModal);
+
+          if (changePasswordForm){
+            changePasswordForm.addEventListener('submit', async (ev)=>{
+              ev.preventDefault();
+              if (changePasswordMessage){ changePasswordMessage.textContent = ''; changePasswordMessage.className = 'text-sm'; }
+              const currentPassword = document.getElementById('cp-current')?.value || '';
+              const newPassword = document.getElementById('cp-new')?.value || '';
+              const confirmPassword = document.getElementById('cp-confirm')?.value || '';
+              if (newPassword !== confirmPassword){
+                if (changePasswordMessage){ changePasswordMessage.textContent = 'New passwords do not match.'; changePasswordMessage.className = 'text-sm text-red-600'; }
+                return;
+              }
+              const username = document.querySelector('input[name="username"]')?.value || '';
+              const password = document.querySelector('input[name="password"]')?.value || '';
+              try{
+                const base = getApiBase();
+                const body = new URLSearchParams({ current_password: currentPassword, new_password: newPassword });
+                const res = await fetch(base + '/api/change_password', {
+                  method: 'POST',
+                  headers: { 'Authorization': 'Basic ' + btoa(username + ':' + password), 'Content-Type': 'application/x-www-form-urlencoded' },
+                  body: body.toString(),
+                });
+                const data = await res.json().catch(()=>({}));
+                if (!res.ok){
+                  if (changePasswordMessage){ changePasswordMessage.textContent = data.detail || 'Failed to update password.'; changePasswordMessage.className = 'text-sm text-red-600'; }
+                  return;
+                }
+                // keep the session's stored credentials in sync with the new password
+                try{ sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ username, password: newPassword })); }catch(e){}
+                const pInput = document.querySelector('input[name="password"]');
+                if (pInput) pInput.value = newPassword;
+                if (changePasswordMessage){ changePasswordMessage.textContent = 'Password updated.'; changePasswordMessage.className = 'text-sm text-emerald-600'; }
+                setTimeout(hideChangePasswordModal, 1200);
+              }catch(e){
+                if (changePasswordMessage){ changePasswordMessage.textContent = 'Network error updating password.'; changePasswordMessage.className = 'text-sm text-red-600'; }
+              }
+            });
+          }
+
+          // Auto sign-in if we already verified this session
+          (async ()=>{
+            let stored = null;
+            try{ stored = JSON.parse(sessionStorage.getItem(AUTH_STORAGE_KEY) || 'null'); }catch(e){ stored = null; }
+            if (stored && stored.username && stored.password){
+              const actor = await tryLogin(stored.username, stored.password);
+              if (actor && !actor.error){ enterApp(stored.username, stored.password, actor.name, actor.type); return; }
+              if (actor && actor.error === 'network'){
+                // server unreachable — keep stored credentials so the user isn't forced to re-enter them once it's back
+                if (loginError) loginError.textContent = 'Cannot reach the server. Please check that it is running and try again.';
+                return;
+              }
+              try{ sessionStorage.removeItem(AUTH_STORAGE_KEY); }catch(e){}
+            }
+          })();
+
+          // payroll nav — show payroll as primary view (hide main grid)
+          const navPayroll = document.getElementById('nav-agent-payroll');
+          const payrollPanel = document.getElementById('agent-payroll-panel');
+          const payrollClose = document.getElementById('close-payroll');
+          const mainGrid = document.querySelector('.grid');
+          function showPayroll(){ if (mainGrid) mainGrid.style.display = 'none'; if (payrollPanel) payrollPanel.style.display = 'block'; }
+          function hidePayroll(){ try{ if (mainGrid) mainGrid.style.display = ''; if (payrollPanel) payrollPanel.style.display = 'none'; const ms = document.getElementById('payroll-month-select'); if (ms && ms.parentNode) ms.parentNode.removeChild(ms); const pc = document.getElementById('payroll-table-container'); if (pc) pc.innerHTML=''; }catch(e){console.error('hidePayroll',e);} }
+
+          function cleanupPanels(){ try{ hidePayroll(); if (typeof hideCaretaker === 'function') hideCaretaker(); if (typeof hideAnalytics === 'function') hideAnalytics(); }catch(e){console.error('cleanupPanels',e);} }
+          // bookings nav should close payroll and go back to calendar
+          const navBookings = document.getElementById('nav-bookings');
+          if (navBookings){
+            navBookings.addEventListener('click', (ev)=>{
+              ev.preventDefault();
+              try{ cleanupPanels(); if (mainGrid) mainGrid.style.display = ''; }catch(e){ console.error('cleanup on bookings', e); }
+              try{ loadCalendar(); }catch(e){ console.error('loadCalendar failed', e); }
+            });
+          }
+          if (navPayroll){
+            navPayroll.addEventListener('click', async (ev)=>{
+              ev.preventDefault();
+              // attempt to use admin creds from form first
+              const username = document.querySelector('input[name="username"]')?.value || '';
+              const password = document.querySelector('input[name="password"]')?.value || '';
+              let authHeader = '';
+              if (username && password){ authHeader = 'Basic ' + btoa(username + ':' + password); }
+              else {
+                // prompt for admin credentials if not present
+                const u = prompt('Admin username for payroll access:', 'admin');
+                const p = prompt('Admin password for payroll access:', 'admin');
+                if (!u || !p){ alert('Admin credentials required'); return; }
+                authHeader = 'Basic ' + btoa(u + ':' + p);
+              }
+              try{ if (typeof hideCaretaker === 'function') hideCaretaker(); }catch(e){console.error('hideCaretaker before payroll',e);} 
+              try{ if (typeof hideAnalytics === 'function') hideAnalytics(); }catch(e){console.error('hideAnalytics before payroll',e);} 
+              showPayroll();
+              const msg = document.getElementById('payroll-message');
+              const container = document.getElementById('payroll-table-container');
+              msg.textContent = 'Loading payroll...'; container.innerHTML = '';
+              try{
+                const base = getApiBase();
+                const res = await fetch(base + '/api/agent_payroll', { headers: { 'Authorization': authHeader } });
+                const txt = await res.text();
+                let data = null;
+                try{ data = JSON.parse(txt); }catch(e){ data = null; }
+                if (!res.ok){
+                  msg.textContent = `Error fetching payroll: ${res.status} ${res.statusText}`;
+                  if (data && data.detail) msg.textContent += ` - ${data.detail}`;
+                  return;
+                }
+                const rows = (data && data.payroll) || [];
+                msg.textContent = `Loaded ${rows.length} rows`;
+                if (!rows.length){ container.innerHTML = '<div class="text-sm text-slate-500 mt-2">No payroll entries found.</div>'; return; }
+
+                // compute monthly summaries (current month)
+                try{
+                  const now = new Date();
+                  // build month selector (last 12 months)
+                  const monthSelectId = 'payroll-month-select';
+                  let monthSelect = document.getElementById(monthSelectId);
+                  if (!monthSelect){
+                    monthSelect = document.createElement('select'); monthSelect.id = monthSelectId; monthSelect.className='mt-2 rounded border p-2';
+                    const optContainer = document.createElement('div'); optContainer.style.marginBottom='8px';
+                    const months = [];
+                    for (let i=0;i<12;i++){ const d = new Date(now.getFullYear(), now.getMonth()-i, 1); months.push(d); }
+                    months.forEach(d=>{ const v = `${d.getFullYear()}-${pad(d.getMonth()+1)}`; const label = `${d.toLocaleString('default',{month:'long'})} ${d.getFullYear()}`; const o = document.createElement('option'); o.value = v; o.textContent = label; monthSelect.appendChild(o); });
+                    // insert monthSelect before container
+                    container.parentNode.insertBefore(monthSelect, container);
+                  }
+                  // determine selected year/month
+                  const sel = (monthSelect && monthSelect.value) || `${now.getFullYear()}-${pad(now.getMonth()+1)}`;
+                  const [selY, selM] = sel.split('-').map(x=>parseInt(x,10));
+                  const rowsThisMonth = rows.filter(r=>{
+                    const ts = r.timestamp || r.date || '';
+                    const d = normalizeDateString(ts) || normalizeDateString((ts||'').slice(0,10));
+                    if (!d) return false;
+                    return d.getFullYear()===selY && d.getMonth()+1===selM;
+                  });
+                  const agentTotals = {};
+                  const toFloat = v=>{ const n = parseFloat(String(v).replace(/[^0-9.\-]/g,'')); return Number.isFinite(n)?n:0; };
+                  rowsThisMonth.forEach(r=>{
+                    const name = (r.agent_name || 'Unknown')
+                    const amt = toFloat(r.agent_commission || 0);
+                    agentTotals[name] = (agentTotals[name] || 0) + amt;
+                  });
+                  const total = Object.values(agentTotals).reduce((s,v)=>s+v,0);
+
+                  // render two summary boxes: total and per-agent list
+                  const summaryDiv = document.createElement('div'); summaryDiv.className='grid grid-cols-2 gap-4 mb-4';
+                  const fmt = v=> new Intl.NumberFormat(undefined,{style:'currency',currency:'PHP',maximumFractionDigits:2}).format(v);
+                  const left = document.createElement('div'); left.className='rounded-lg border p-4 bg-emerald-50'; left.innerHTML = `<p class="text-sm font-medium text-emerald-700">Total commissions (this month)</p><p class="mt-2 text-2xl font-semibold text-emerald-900">${fmt(total)}</p>`;
+                  const right = document.createElement('div'); right.className='rounded-lg border p-4 bg-white';
+                  const sorted = Object.entries(agentTotals).sort((a,b)=>b[1]-a[1]);
+                  const topAgent = sorted.length? sorted[0][0] : null;
+                  // render per-agent as cards similar to the Total box
+                  let cardsHtml = `<div class="flex items-center justify-between"><p class="text-sm font-medium text-slate-700">Per agent (${escapeHTML(monthSelect ? monthSelect.options[monthSelect.selectedIndex].text : (now.toLocaleString('default',{month:'long'})+' '+now.getFullYear()))})</p></div><div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3" id="per-agent-list">`;
+                  sorted.forEach(([name,amt])=>{
+                    const isTop = (name === topAgent);
+                    const cardBg = isTop ? 'bg-amber-50' : 'bg-white';
+                    const amountColor = isTop ? 'text-amber-900' : 'text-emerald-900';
+                    // top agent: larger card spanning two columns on small+ screens
+                    if (isTop) {
+                      cardsHtml += `<div class="rounded-lg border p-6 ${cardBg} sm:col-span-2"><div class="text-sm text-slate-700">${escapeHTML(name)}</div><div class="mt-3 ${amountColor} text-3xl font-bold">${fmt(amt)}</div></div>`;
+                    } else {
+                      cardsHtml += `<div class="rounded-lg border p-4 ${cardBg}"><div class="text-sm text-slate-700">${escapeHTML(name)}</div><div class="mt-2 ${amountColor} text-2xl font-semibold">${fmt(amt)}</div></div>`;
+                    }
+                  });
+                  cardsHtml += '</div>';
+                  right.innerHTML = cardsHtml;
+                  // if monthSelect exists, wire change handler to re-trigger the nav click to reload payroll for the new month
+                  if (monthSelect && !monthSelect._payroll_wired){
+                    monthSelect.addEventListener('change', ()=>{ navPayroll.click(); });
+                    monthSelect._payroll_wired = true;
+                  }
+                  summaryDiv.appendChild(left); summaryDiv.appendChild(right);
+                  container.appendChild(summaryDiv);
+                }catch(err){ console.error('payroll summary', err); }
+
+                // render table
+                const table = document.createElement('table'); table.className='w-full text-sm';
+                const thead = document.createElement('thead'); thead.innerHTML = '<tr class="text-left text-slate-600"><th class="p-2">Timestamp</th><th class="p-2">Booking ID</th><th class="p-2">Agent</th><th class="p-2">Commission</th><th class="p-2">Status</th></tr>';
+                table.appendChild(thead);
+                const tbody = document.createElement('tbody');
+                rows.forEach(r=>{
+                  const tr = document.createElement('tr');
+                  tr.innerHTML = `<td class="p-2">${escapeHTML(r.timestamp||r.date||'')}</td><td class="p-2">${escapeHTML(r.booking_id||'')}</td><td class="p-2">${escapeHTML(r.agent_name||'')}</td><td class="p-2">${escapeHTML(r.agent_commission||'')}</td><td class="p-2">${escapeHTML(r.status||'')}</td>`;
+                  tbody.appendChild(tr);
+                });
+                table.appendChild(tbody); container.appendChild(table);
+              }catch(err){ console.error('loadAgentPayroll', err); msg.textContent = 'Error loading payroll: '+(err.message||err); }
+            });
+          }
+          if (payrollClose) payrollClose.addEventListener('click', ()=>{ hidePayroll(); });
+
+        // caretaker ledger nav
+        const navCaretaker = document.getElementById('nav-caretaker-ledger');
+        const caretakerPanel = document.getElementById('caretaker-ledger-panel');
+        const caretakerClose = document.getElementById('close-caretaker');
+        function showCaretaker(){ if (mainGrid) mainGrid.style.display = 'none'; if (caretakerPanel) caretakerPanel.style.display = 'block'; }
+        function hideCaretaker(){ try{ if (mainGrid) mainGrid.style.display = ''; if (caretakerPanel) caretakerPanel.style.display = 'none'; const ms = document.getElementById('caretaker-month-select'); if (ms && ms.parentNode) ms.parentNode.removeChild(ms); const cc = document.getElementById('caretaker-table-container'); if (cc) cc.innerHTML = ''; }catch(e){console.error('hideCaretaker',e);} }
+        if (navCaretaker){
+          navCaretaker.addEventListener('click', async (ev)=>{
+            ev.preventDefault();
+            // get admin creds similar to payroll
+            const username = document.querySelector('input[name="username"]')?.value || '';
+            const password = document.querySelector('input[name="password"]')?.value || '';
+            let authHeader = '';
+            if (username && password){ authHeader = 'Basic ' + btoa(username + ':' + password); }
+            else {
+              const u = prompt('Admin username for caretaker access:', 'admin');
+              const p = prompt('Admin password for caretaker access:', 'admin');
+              if (!u || !p){ alert('Admin credentials required'); return; }
+              authHeader = 'Basic ' + btoa(u + ':' + p);
+            }
+            try{ if (typeof hidePayroll === 'function') hidePayroll(); }catch(e){console.error('hidePayroll before caretaker',e);} 
+            try{ if (typeof hideAnalytics === 'function') hideAnalytics(); }catch(e){console.error('hideAnalytics before caretaker',e);} 
+            showCaretaker();
+            const msg = document.getElementById('caretaker-message');
+            const container = document.getElementById('caretaker-table-container');
+            msg.textContent = 'Loading caretaker ledger...'; container.innerHTML = '';
+            try{
+              const base = getApiBase();
+              const res = await fetch(base + '/api/caretaker_ledger', { headers: { 'Authorization': authHeader } });
+              const txt = await res.text();
+              let data = null; try{ data = JSON.parse(txt); }catch(e){ data = null; }
+              if (!res.ok){ msg.textContent = `Error fetching caretaker ledger: ${res.status} ${res.statusText}`; if (data && data.detail) msg.textContent += ` - ${data.detail}`; return; }
+              const rows = (data && data.caretaker_ledger) || [];
+              msg.textContent = `Loaded ${rows.length} rows`;
+              if (!rows.length){ container.innerHTML = '<div class="text-sm text-slate-500 mt-2">No caretaker entries found.</div>'; return; }
+
+              // monthly summary and per-caretaker totals
+              try{
+                const now = new Date();
+                const monthSelectId = 'caretaker-month-select';
+                let monthSelect = document.getElementById(monthSelectId);
+                if (!monthSelect){
+                  monthSelect = document.createElement('select'); monthSelect.id = monthSelectId; monthSelect.className='mt-2 rounded border p-2';
+                  const months = [];
+                  for (let i=0;i<12;i++){ const d = new Date(now.getFullYear(), now.getMonth()-i, 1); months.push(d); }
+                  months.forEach(d=>{ const v = `${d.getFullYear()}-${pad(d.getMonth()+1)}`; const label = `${d.toLocaleString('default',{month:'long'})} ${d.getFullYear()}`; const o = document.createElement('option'); o.value = v; o.textContent = label; monthSelect.appendChild(o); });
+                  container.parentNode.insertBefore(monthSelect, container);
+                }
+                const sel = (monthSelect && monthSelect.value) || `${now.getFullYear()}-${pad(now.getMonth()+1)}`;
+                const [selY, selM] = sel.split('-').map(x=>parseInt(x,10));
+                const rowsThisMonth = rows.filter(r=>{ const ts = r.timestamp || r.date || ''; const d = normalizeDateString(ts) || normalizeDateString((ts||'').slice(0,10)); if (!d) return false; return d.getFullYear()===selY && d.getMonth()+1===selM; });
+                const caretakerTotals = {}; const toFloat = v=>{ const n = parseFloat(String(v).replace(/[^0-9.\-]/g,'')); return Number.isFinite(n)?n:0; };
+                rowsThisMonth.forEach(r=>{ const name = (r.caretaker || 'Unknown'); const amt = toFloat(r.cleaning_fee || 0); caretakerTotals[name] = (caretakerTotals[name] || 0) + amt; });
+                const total = Object.values(caretakerTotals).reduce((s,v)=>s+v,0);
+
+                // render summary boxes
+                const summaryDiv = document.createElement('div'); summaryDiv.className='grid grid-cols-2 gap-4 mb-4';
+                const fmt = v=> new Intl.NumberFormat(undefined,{style:'currency',currency:'PHP',maximumFractionDigits:2}).format(v);
+                const left = document.createElement('div'); left.className='rounded-lg border p-4 bg-amber-50'; left.innerHTML = `<p class="text-sm font-medium text-amber-700">Total cleaning fees (this month)</p><p class="mt-2 text-2xl font-semibold text-amber-900">${fmt(total)}</p>`;
+                const right = document.createElement('div'); right.className='rounded-lg border p-4 bg-white';
+                const sorted = Object.entries(caretakerTotals).sort((a,b)=>b[1]-a[1]);
+                let cardsHtml = `<div class="flex items-center justify-between"><p class="text-sm font-medium text-slate-700">Per caretaker (${escapeHTML(monthSelect ? monthSelect.options[monthSelect.selectedIndex].text : (now.toLocaleString('default',{month:'long'})+' '+now.getFullYear()))})</p></div><div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3" id="per-caretaker-list">`;
+                const top = sorted.length? sorted[0][0]:null;
+                sorted.forEach(([name,amt])=>{ const isTop = (name===top); const bg = isTop?'bg-amber-50':'bg-white'; const color = isTop?'text-amber-900':'text-emerald-900'; if (isTop) { cardsHtml += `<div class="rounded-lg border p-6 ${bg} sm:col-span-2"><div class="text-sm text-slate-700">${escapeHTML(name)}</div><div class="mt-3 ${color} text-3xl font-bold">${fmt(amt)}</div></div>`; } else { cardsHtml += `<div class="rounded-lg border p-4 ${bg}"><div class="text-sm text-slate-700">${escapeHTML(name)}</div><div class="mt-2 ${color} text-2xl font-semibold">${fmt(amt)}</div></div>`; } });
+                cardsHtml += '</div>';
+                right.innerHTML = cardsHtml;
+                if (monthSelect && !monthSelect._caretaker_wired){ monthSelect.addEventListener('change', ()=>{ navCaretaker.click(); }); monthSelect._caretaker_wired = true; }
+                summaryDiv.appendChild(left); summaryDiv.appendChild(right); container.appendChild(summaryDiv);
+              }catch(err){ console.error('caretaker summary', err); }
+
+              // render details table
+              const table = document.createElement('table'); table.className='w-full text-sm';
+              const thead = document.createElement('thead'); thead.innerHTML = '<tr class="text-left text-slate-600"><th class="p-2">Timestamp</th><th class="p-2">Booking ID</th><th class="p-2">Caretaker</th><th class="p-2">Cleaning Fee</th><th class="p-2">Status</th></tr>';
+              table.appendChild(thead);
+              const tbody = document.createElement('tbody'); rows.forEach(r=>{ const tr = document.createElement('tr'); tr.innerHTML = `<td class="p-2">${escapeHTML(r.timestamp||r.date||'')}</td><td class="p-2">${escapeHTML(r.booking_id||'')}</td><td class="p-2">${escapeHTML(r.caretaker||'')}</td><td class="p-2">${escapeHTML(r.cleaning_fee||'')}</td><td class="p-2">${escapeHTML(r.status||'')}</td>`; tbody.appendChild(tr); }); table.appendChild(tbody); container.appendChild(table);
+            }catch(err){ console.error('loadCaretakerLedger', err); msg.textContent = 'Error loading caretaker ledger: '+(err.message||err); }
+          });
+        }
+        if (caretakerClose) caretakerClose.addEventListener('click', ()=>{ hideCaretaker(); });
+        // analytics nav
+        const navAnalytics = document.getElementById('nav-analytics');
+        const analyticsPanel = document.getElementById('analytics-panel');
+        const analyticsClose = document.getElementById('close-analytics');
+        function showAnalytics(){ if (mainGrid) mainGrid.style.display = 'none'; if (analyticsPanel) analyticsPanel.style.display = 'block'; }
+        function hideAnalytics(){ try{ if (mainGrid) mainGrid.style.display = ''; if (analyticsPanel) analyticsPanel.style.display = 'none'; const ac = document.getElementById('analytics-chart-container'); if (ac) ac.innerHTML = ''; const ms = document.getElementById('analytics-month-select'); if (ms && ms.parentNode) ms.parentNode.removeChild(ms); }catch(e){console.error('hideAnalytics',e);} }
+        if (navAnalytics){
+          navAnalytics.addEventListener('click', async (ev)=>{
+            ev.preventDefault();
+            const username = document.querySelector('input[name="username"]')?.value || '';
+            const password = document.querySelector('input[name="password"]')?.value || '';
+            let authHeader = '';
+            if (username && password){ authHeader = 'Basic ' + btoa(username + ':' + password); }
+            else {
+              const u = prompt('Admin username for analytics access:', 'admin');
+              const p = prompt('Admin password for analytics access:', 'admin');
+              if (!u || !p){ alert('Admin credentials required'); return; }
+              authHeader = 'Basic ' + btoa(u + ':' + p);
+            }
+            try{ if (typeof hidePayroll === 'function') hidePayroll(); }catch(e){}
+            try{ if (typeof hideCaretaker === 'function') hideCaretaker(); }catch(e){}
+            showAnalytics();
+            const msg = document.getElementById('analytics-message');
+            const container = document.getElementById('analytics-chart-container');
+            msg.textContent = 'Loading analytics...'; container.innerHTML = '';
+            try{
+              const base = getApiBase();
+              const res = await fetch(base + '/api/analytics', { headers: { 'Authorization': authHeader } });
+              const txt = await res.text(); let data = null; try{ data = JSON.parse(txt); }catch(e){ data = null; }
+              if (!res.ok){ msg.textContent = `Error fetching analytics: ${res.status} ${res.statusText}`; if (data && data.detail) msg.textContent += ` - ${data.detail}`; return; }
+              const analytics = (data && data.analytics) || {};
+              const monthly = analytics.monthly || [];
+              if (!monthly.length){ msg.textContent = 'No analytics data available.'; return; }
+              msg.textContent = '';
+              // build labels and datasets
+              const labels = monthly.map(m=>{ const parts = m.month.split('-'); const d = new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1,1); return d.toLocaleString(undefined,{month:'short',year:'numeric'}); });
+              const bookings = monthly.map(m=>m.bookings||0);
+              const revenue = monthly.map(m=>Math.round((m.gross_revenue||0)*100)/100);
+
+              function renderBarChart(parent, title, labels, values, opts){
+                const box = document.createElement('div'); box.className='mb-6';
+                const h = document.createElement('h4'); h.className='text-sm font-medium text-slate-700 mb-2'; h.textContent = title; box.appendChild(h);
+                const chart = document.createElement('div'); chart.style.width='100%'; chart.style.maxWidth='720px';
+                const max = Math.max(...values,1);
+                labels.forEach((lbl,i)=>{
+                  const row = document.createElement('div'); row.style.display='flex'; row.style.alignItems='center'; row.style.marginBottom='6px';
+                  const lab = document.createElement('div'); lab.style.width='110px'; lab.style.fontSize='12px'; lab.style.color='#475569'; lab.textContent = lbl;
+                  const barwrap = document.createElement('div'); barwrap.style.flex='1'; barwrap.style.marginLeft='8px'; barwrap.style.background='#f1f5f9'; barwrap.style.borderRadius='6px';
+                  const bar = document.createElement('div'); const pct = Math.round((values[i]/max)*100); bar.style.width = pct + '%'; bar.style.height='20px'; bar.style.borderRadius='6px'; bar.style.background = opts.color || '#2563eb'; bar.style.color='#fff'; bar.style.paddingLeft='8px'; bar.style.fontSize='12px'; bar.textContent = opts.formatValue? opts.formatValue(values[i]) : String(values[i]);
+                  barwrap.appendChild(bar); row.appendChild(lab); row.appendChild(barwrap); chart.appendChild(row);
+                });
+                box.appendChild(chart); parent.appendChild(box);
+              }
+
+              // render two charts: bookings and revenue
+              renderBarChart(container, 'Bookings per Month', labels, bookings, { color: '#0ea5a4', formatValue: v=>String(v) });
+              renderBarChart(container, 'Gross Revenue per Month', labels, revenue, { color: '#2563eb', formatValue: v=>new Intl.NumberFormat(undefined,{style:'currency',currency:'PHP'}).format(v) });
+
+            }catch(err){ console.error('loadAnalytics', err); msg.textContent = 'Error loading analytics: '+(err.message||err); }
+          });
+        }
+        if (analyticsClose) analyticsClose.addEventListener('click', ()=>{ hideAnalytics(); });
+        // Ensure panels are hidden and calendar is visible on initial load
+        try{ if (typeof cleanupPanels === 'function') cleanupPanels(); if (mainGrid) mainGrid.style.display = ''; }catch(e){console.error('initial cleanup',e);} 
+
+        // Keep whichever panel is open in sync with live edits made directly in the Google Sheet.
+        setInterval(()=>{
+          try{
+            if (payrollPanel && payrollPanel.style.display !== 'none') navPayroll.dispatchEvent(new Event('click'));
+            else if (caretakerPanel && caretakerPanel.style.display !== 'none') navCaretaker.dispatchEvent(new Event('click'));
+            else if (analyticsPanel && analyticsPanel.style.display !== 'none') navAnalytics.dispatchEvent(new Event('click'));
+          }catch(e){ console.error('panel auto-refresh', e); }
+        }, 20000);
+      });
+    </script>
+  </body>
+</html>

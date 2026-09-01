@@ -1,0 +1,165 @@
+:root {
+  --bg: #07111f;
+  --panel: #0f1b30;
+  --panel-2: #14233f;
+  --text: #eef4ff;
+  --muted: #8ea0c3;
+  --accent: #7c9cff;
+  --accent-2: #5ee5c1;
+  --danger: #ff8c7c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Inter, Arial, sans-serif;
+  background: linear-gradient(135deg, #07111f, #101c36);
+  color: var(--text);
+}
+
+.app-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 20px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: var(--accent-2);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+}
+
+h1,
+h2 {
+  margin: 0;
+}
+
+.badge {
+  border: 1px solid rgba(126, 156, 255, 0.4);
+  padding: 8px 14px;
+  border-radius: 999px;
+  color: var(--accent);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.panel {
+  background: rgba(15, 27, 48, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.25);
+}
+
+.form-panel,
+.list-panel {
+  grid-column: span 1;
+}
+
+.summary-panel {
+  grid-column: span 1;
+}
+
+.booking-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.booking-form label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+}
+
+input,
+select,
+button {
+  font: inherit;
+}
+
+input,
+select {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 11px 12px;
+}
+
+button {
+  border: none;
+  border-radius: 12px;
+  padding: 12px 18px;
+  background: linear-gradient(135deg, var(--accent), #8f7cff);
+  color: white;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.summary-card {
+  margin-top: 16px;
+  background: var(--panel-2);
+  border-radius: 12px;
+  padding: 18px;
+}
+
+.summary-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.summary-card strong {
+  color: var(--accent-2);
+}
+
+.booking-list {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.booking-list li {
+  background: var(--panel-2);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.booking-list small {
+  color: var(--muted);
+}
+
+@media (max-width: 760px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
