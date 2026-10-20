@@ -1,8 +1,10 @@
 import os
+import logging
 
 import gspread
 from google.oauth2.service_account import Credentials
 
+logger = logging.getLogger(__name__)
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -294,6 +296,43 @@ def append_booking(booking_summary: dict):
     return booking_row
 
 
+def _auto_settle_overdue_balances(records: list[dict]) -> list[dict]:
+    """If 24h+ have passed since check-in with no balance payment method set,
+    assume the guest paid the balance in cash to the unit's caretaker."""
+    from datetime import datetime, timedelta
+
+    now = datetime.utcnow()
+    for record in records:
+        if str(record.get("status") or "").strip().lower() != "pending":
+            continue
+        if str(record.get("balance_payment_method") or "").strip():
+            continue
+        try:
+            balance = float(record.get("balance") or 0)
+        except (TypeError, ValueError):
+            balance = 0.0
+        if balance <= 0:
+            continue
+        try:
+            check_in = datetime.strptime(str(record.get("check_in"))[:10], "%Y-%m-%d")
+        except (TypeError, ValueError):
+            continue
+        if now < check_in + timedelta(hours=24):
+            continue
+
+        caretaker = record.get("caretaker") or "Ate Tess"
+        record["balance_payment_method"] = caretaker
+        record["paid_balance"] = balance
+        record["balance"] = 0
+        record["status"] = "Fully Paid"
+        try:
+            update_booking(record.get("booking_id", ""), record)
+        except Exception:
+            logger.exception("failed auto-settling overdue balance for %s", record.get("booking_id"))
+
+    return records
+
+
 def get_all_bookings(unit_id: str | None = None) -> list[dict]:
     """Return all bookings from the configured spreadsheet as a list of dicts.
 
@@ -365,6 +404,8 @@ def get_all_bookings(unit_id: str | None = None) -> list[dict]:
         for row in data_rows:
             record = {headers[i] if i < len(headers) else f"col_{i}": (row[i] if i < len(row) else "") for i in range(len(headers))}
             records.append(record)
+
+        records = _auto_settle_overdue_balances(records)
 
         if unit_id:
             unit_str = str(unit_id).strip()

@@ -21,7 +21,7 @@ def process_booking(data: dict) -> dict:
         if parking_fee > 0:
             agent_commission += 50.0
 
-    if unit_id in {"635", "1931"}:
+    if unit_id == "1931":
         caretaker = "Ate Czarina"
         cleaning_fee = 500.0
     else:

@@ -35,7 +35,7 @@ templates = Jinja2Templates(directory=str(base_dir))
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-ALLOWED_UNITS = {"635", "1931", "1127", "1228", "1230"}
+ALLOWED_UNITS = {"1931", "1127", "1228", "1230"}
 ALLOWED_PAYMENT_METHODS = {"Cash", "GCash", "BDO", "Bank Transfer", "PayMaya", "Ate Czarina", "Ate Tess", "Other"}
 ALLOWED_BALANCE_PAYMENT_METHODS = {"GCash", "BDO", "Ate Czarina", "Ate Tess"}
 
