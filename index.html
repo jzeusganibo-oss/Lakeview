@@ -1179,27 +1179,51 @@
                   if (currentActorType === 'admin'){
                     const yearMonths = [];
                     for (let m=1; m<=12; m++){ yearMonths.push(new Date(selY, m-1, 1)); }
-                    const monthTotals = yearMonths.map(d=>{
+                    const agentColors = { 'Alexis': '#2563eb', 'Maricon': '#f97316', 'Kath': '#10b981' };
+                    const defaultColor = '#64748b';
+                    const agentNames = Array.from(new Set(rows.map(r=> r.agent_name || 'Unknown')));
+                    const monthlyAgentTotals = yearMonths.map(d=>{
                       const y = d.getFullYear(), m = d.getMonth()+1;
-                      const sum = rows.filter(r=>{
+                      const totals = {};
+                      rows.forEach(r=>{
                         const ci = r.check_in || '';
                         const cd = normalizeDateString(ci) || normalizeDateString((ci||'').slice(0,10));
-                        return cd && cd.getFullYear()===y && cd.getMonth()+1===m;
-                      }).reduce((s,r)=> s + toFloat(r.agent_commission || 0), 0);
-                      return Math.round(sum*100)/100;
+                        if (!cd || cd.getFullYear()!==y || cd.getMonth()+1!==m) return;
+                        const name = r.agent_name || 'Unknown';
+                        totals[name] = (totals[name] || 0) + toFloat(r.agent_commission || 0);
+                      });
+                      return totals;
                     });
+                    const chartMax = Math.max(1, ...monthlyAgentTotals.flatMap(t => Object.values(t)));
                     const chartLabels = yearMonths.map(d=> d.toLocaleString('default',{month:'short'}));
                     const chartBox = document.createElement('div'); chartBox.className = 'mb-6';
                     const chartTitle = document.createElement('h4'); chartTitle.className='text-sm font-medium text-slate-700 mb-2'; chartTitle.textContent = `Total Payroll per Month (${selY})`;
                     chartBox.appendChild(chartTitle);
-                    const chartWrap = document.createElement('div'); chartWrap.style.width='100%'; chartWrap.style.maxWidth='720px';
-                    const maxVal = Math.max(...monthTotals, 1);
+
+                    const legend = document.createElement('div'); legend.className = 'flex flex-wrap items-center gap-4 mb-3';
+                    agentNames.forEach(name=>{
+                      const item = document.createElement('div'); item.className = 'flex items-center gap-1.5 text-xs text-slate-600';
+                      const swatch = document.createElement('span'); swatch.style.display='inline-block'; swatch.style.width='10px'; swatch.style.height='10px'; swatch.style.borderRadius='2px'; swatch.style.background = agentColors[name] || defaultColor;
+                      item.appendChild(swatch); item.appendChild(document.createTextNode(name));
+                      legend.appendChild(item);
+                    });
+                    chartBox.appendChild(legend);
+
+                    const colHeight = 160;
+                    const chartWrap = document.createElement('div'); chartWrap.style.display='flex'; chartWrap.style.alignItems='flex-end'; chartWrap.style.gap='12px'; chartWrap.style.width='100%'; chartWrap.style.maxWidth='900px'; chartWrap.style.borderBottom='1px solid #e2e8f0'; chartWrap.style.paddingBottom='4px';
                     chartLabels.forEach((lbl,i)=>{
-                      const row = document.createElement('div'); row.style.display='flex'; row.style.alignItems='center'; row.style.marginBottom='6px';
-                      const lab = document.createElement('div'); lab.style.width='90px'; lab.style.fontSize='12px'; lab.style.color='#475569'; lab.textContent = lbl;
-                      const barwrap = document.createElement('div'); barwrap.style.flex='1'; barwrap.style.marginLeft='8px'; barwrap.style.background='#f1f5f9'; barwrap.style.borderRadius='6px';
-                      const bar = document.createElement('div'); const pct = Math.round((monthTotals[i]/maxVal)*100); bar.style.width = pct + '%'; bar.style.height='20px'; bar.style.borderRadius='6px'; bar.style.background = '#7c3aed'; bar.style.color='#fff'; bar.style.paddingLeft='8px'; bar.style.fontSize='12px'; bar.textContent = fmt(monthTotals[i]);
-                      barwrap.appendChild(bar); row.appendChild(lab); row.appendChild(barwrap); chartWrap.appendChild(row);
+                      const group = document.createElement('div'); group.style.display='flex'; group.style.flexDirection='column'; group.style.alignItems='center'; group.style.flex='1';
+                      const bars = document.createElement('div'); bars.style.display='flex'; bars.style.alignItems='flex-end'; bars.style.gap='3px'; bars.style.height = colHeight + 'px';
+                      agentNames.forEach(name=>{
+                        const val = monthlyAgentTotals[i][name] || 0;
+                        const h = Math.round((val/chartMax)*colHeight);
+                        const col = document.createElement('div');
+                        col.title = `${name}: ${fmt(val)}`;
+                        col.style.width='14px'; col.style.height = h + 'px'; col.style.background = agentColors[name] || defaultColor; col.style.borderRadius='3px 3px 0 0';
+                        bars.appendChild(col);
+                      });
+                      const lab = document.createElement('div'); lab.style.fontSize='11px'; lab.style.color='#475569'; lab.style.marginTop='6px'; lab.textContent = lbl;
+                      group.appendChild(bars); group.appendChild(lab); chartWrap.appendChild(group);
                     });
                     chartBox.appendChild(chartWrap);
                     container.appendChild(chartBox);
