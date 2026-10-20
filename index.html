@@ -1454,6 +1454,17 @@
               const labels = monthly.map(m=>{ const parts = m.month.split('-'); const d = new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1,1); return d.toLocaleString(undefined,{month:'short',year:'numeric'}); });
               const bookings = monthly.map(m=>m.bookings||0);
               const revenue = monthly.map(m=>Math.round((m.gross_revenue||0)*100)/100);
+              const monthlyByKey = {};
+              monthly.forEach(m => { monthlyByKey[m.month] = m; });
+              function prevYearValue(m, field){
+                const parts = m.month.split('-');
+                const y = parseInt(parts[0],10) - 1;
+                const key = `${y}-${parts[1]}`;
+                const prev = monthlyByKey[key];
+                return prev ? Math.round((Number(prev[field])||0)*100)/100 : 0;
+              }
+              const bookingsPrev = monthly.map(m => prevYearValue(m, 'bookings'));
+              const revenuePrev = monthly.map(m => prevYearValue(m, 'gross_revenue'));
               const totalNetIncome = monthly.reduce((sum, m) => sum + (Number(m.owner_net ?? m.net_income ?? 0) || 0), 0);
               const totalCleaningFees = monthly.reduce((sum, m) => sum + (Number(m.cleaning_fee || 0) || 0), 0);
 
@@ -1478,17 +1489,33 @@
               renderMetricCard(metricRow, 'Cleaning Fees', new Intl.NumberFormat(undefined,{style:'currency',currency:'PHP'}).format(totalCleaningFees), 'amber');
               container.appendChild(metricRow);
 
-              function renderBarChart(parent, title, labels, values, opts){
+              function renderBarChart(parent, title, labels, values, prevValues, opts){
                 const box = document.createElement('div'); box.className='mb-6';
                 const h = document.createElement('h4'); h.className='text-sm font-medium text-slate-700 mb-2'; h.textContent = title; box.appendChild(h);
-                const chart = document.createElement('div'); chart.style.width='100%'; chart.style.maxWidth='720px';
-                const max = Math.max(...values,1);
+                const legend = document.createElement('div'); legend.className='flex items-center gap-4 mb-2 text-xs text-slate-600';
+                const addLegendItem = (color, text) => {
+                  const item = document.createElement('div'); item.className='flex items-center gap-1.5';
+                  const sw = document.createElement('span'); sw.style.display='inline-block'; sw.style.width='10px'; sw.style.height='10px'; sw.style.borderRadius='2px'; sw.style.background = color;
+                  item.appendChild(sw); item.appendChild(document.createTextNode(text)); legend.appendChild(item);
+                };
+                addLegendItem(opts.color || '#2563eb', 'This year');
+                addLegendItem('#d1d5db', 'Same month last year');
+                box.appendChild(legend);
+                const colHeight = 160;
+                const chart = document.createElement('div'); chart.style.display='flex'; chart.style.alignItems='flex-end'; chart.style.gap='12px'; chart.style.width='100%'; chart.style.maxWidth='900px'; chart.style.borderBottom='1px solid #e2e8f0'; chart.style.paddingBottom='4px';
+                const max = Math.max(...values, ...prevValues, 1);
                 labels.forEach((lbl,i)=>{
-                  const row = document.createElement('div'); row.style.display='flex'; row.style.alignItems='center'; row.style.marginBottom='6px';
-                  const lab = document.createElement('div'); lab.style.width='110px'; lab.style.fontSize='12px'; lab.style.color='#475569'; lab.textContent = lbl;
-                  const barwrap = document.createElement('div'); barwrap.style.flex='1'; barwrap.style.marginLeft='8px'; barwrap.style.background='#f1f5f9'; barwrap.style.borderRadius='6px';
-                  const bar = document.createElement('div'); const pct = Math.round((values[i]/max)*100); bar.style.width = pct + '%'; bar.style.height='20px'; bar.style.borderRadius='6px'; bar.style.background = opts.color || '#2563eb'; bar.style.color='#fff'; bar.style.paddingLeft='8px'; bar.style.fontSize='12px'; bar.textContent = opts.formatValue? opts.formatValue(values[i]) : String(values[i]);
-                  barwrap.appendChild(bar); row.appendChild(lab); row.appendChild(barwrap); chart.appendChild(row);
+                  const group = document.createElement('div'); group.style.display='flex'; group.style.flexDirection='column'; group.style.alignItems='center'; group.style.flex='1';
+                  const bars = document.createElement('div'); bars.style.display='flex'; bars.style.alignItems='flex-end'; bars.style.gap='3px'; bars.style.height = colHeight + 'px';
+                  const curH = Math.round((values[i]/max)*colHeight);
+                  const curBar = document.createElement('div'); curBar.title = opts.formatValue? opts.formatValue(values[i]) : String(values[i]); curBar.style.width='14px'; curBar.style.height = curH + 'px'; curBar.style.background = opts.color || '#2563eb'; curBar.style.borderRadius='3px 3px 0 0';
+                  bars.appendChild(curBar);
+                  const prevVal = prevValues[i] || 0;
+                  const prevH = Math.round((prevVal/max)*colHeight);
+                  const prevBar = document.createElement('div'); prevBar.title = 'Last year: ' + (opts.formatValue? opts.formatValue(prevVal) : String(prevVal)); prevBar.style.width='14px'; prevBar.style.height = prevH + 'px'; prevBar.style.background = '#d1d5db'; prevBar.style.borderRadius='3px 3px 0 0';
+                  bars.appendChild(prevBar);
+                  const lab = document.createElement('div'); lab.style.fontSize='11px'; lab.style.color='#475569'; lab.style.marginTop='6px'; lab.textContent = lbl;
+                  group.appendChild(bars); group.appendChild(lab); chart.appendChild(group);
                 });
                 box.appendChild(chart); parent.appendChild(box);
               }
@@ -1518,8 +1545,8 @@
               }
 
               // render two charts: bookings and revenue
-              renderBarChart(container, 'Bookings per Month', labels, bookings, { color: '#0ea5a4', formatValue: v=>String(v) });
-              renderBarChart(container, 'Gross Revenue per Month', labels, revenue, { color: '#2563eb', formatValue: v=>new Intl.NumberFormat(undefined,{style:'currency',currency:'PHP'}).format(v) });
+              renderBarChart(container, 'Bookings per Month', labels, bookings, bookingsPrev, { color: '#0ea5a4', formatValue: v=>String(v) });
+              renderBarChart(container, 'Gross Revenue per Month', labels, revenue, revenuePrev, { color: '#2563eb', formatValue: v=>new Intl.NumberFormat(undefined,{style:'currency',currency:'PHP'}).format(v) });
 
               const perUnitRows = analytics.per_unit || [];
               renderSummaryTable(container, 'Gross and Net per Unit', perUnitRows, [
