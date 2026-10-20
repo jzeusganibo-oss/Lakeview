@@ -922,6 +922,8 @@ def get_analytics(last_n_months: int = 12) -> dict:
     except Exception:
         records = []
 
+    records = _auto_settle_overdue_balances(records)
+
     summary = build_analytics_summary(records)
 
     now = datetime.utcnow()
