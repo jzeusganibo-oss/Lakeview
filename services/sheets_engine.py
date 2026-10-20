@@ -1042,19 +1042,31 @@ def get_agent_payroll() -> list[dict]:
         except Exception:
             return []
 
+    records = []
     try:
         values = ws.get_all_values()
         if not values or len(values) == 0:
             return []
         headers = [c.strip() for c in values[0]]
         data_rows = values[1:]
-        records = []
         for row in data_rows:
             record = {headers[i] if i < len(headers) else f"col_{i}": (row[i] if i < len(row) else "") for i in range(len(headers))}
             records.append(record)
-        return records
     except Exception:
         return []
+
+    try:
+        bookings = get_all_bookings()
+        booking_lookup = {str(b.get("booking_id", "")).strip(): b for b in bookings}
+    except Exception:
+        booking_lookup = {}
+    for record in records:
+        booking = booking_lookup.get(str(record.get("booking_id", "")).strip(), {})
+        record["unit_id"] = booking.get("unit_id", "")
+        record["check_in"] = booking.get("check_in", "")
+        record["check_out"] = booking.get("check_out", "")
+
+    return records
 
 
 def update_agent_payroll_status(booking_ids: list[str], new_status: str) -> int:

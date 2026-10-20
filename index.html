@@ -1096,7 +1096,8 @@
                 msg.textContent = `Loaded ${rows.length} rows`;
                 if (!rows.length){ container.innerHTML = '<div class="text-sm text-slate-500 mt-2">No payroll entries found.</div>'; return; }
 
-                // compute monthly summaries (current month)
+                // compute period summaries (payroll runs twice a month: 1st-15th and 16th-end)
+                let rowsInPeriod = rows;
                 try{
                   const now = new Date();
                   // build month selector (last 12 months)
@@ -1104,25 +1105,36 @@
                   let monthSelect = document.getElementById(monthSelectId);
                   if (!monthSelect){
                     monthSelect = document.createElement('select'); monthSelect.id = monthSelectId; monthSelect.className='mt-2 rounded border p-2';
-                    const optContainer = document.createElement('div'); optContainer.style.marginBottom='8px';
                     const months = [];
                     for (let i=0;i<12;i++){ const d = new Date(now.getFullYear(), now.getMonth()-i, 1); months.push(d); }
                     months.forEach(d=>{ const v = `${d.getFullYear()}-${pad(d.getMonth()+1)}`; const label = `${d.toLocaleString('default',{month:'long'})} ${d.getFullYear()}`; const o = document.createElement('option'); o.value = v; o.textContent = label; monthSelect.appendChild(o); });
                     // insert monthSelect before container
                     container.parentNode.insertBefore(monthSelect, container);
                   }
-                  // determine selected year/month
+                  // build payroll period selector (cutoffs on the 15th and 30th)
+                  const periodSelectId = 'payroll-period-select';
+                  let periodSelect = document.getElementById(periodSelectId);
+                  if (!periodSelect){
+                    periodSelect = document.createElement('select'); periodSelect.id = periodSelectId; periodSelect.className='mt-2 ml-2 rounded border p-2';
+                    [['1-15','1st - 15th'],['16-end','16th - end']].forEach(([v,label])=>{ const o = document.createElement('option'); o.value = v; o.textContent = label; periodSelect.appendChild(o); });
+                    monthSelect.parentNode.insertBefore(periodSelect, monthSelect.nextSibling);
+                  }
+                  // determine selected year/month/period
                   const sel = (monthSelect && monthSelect.value) || `${now.getFullYear()}-${pad(now.getMonth()+1)}`;
                   const [selY, selM] = sel.split('-').map(x=>parseInt(x,10));
-                  const rowsThisMonth = rows.filter(r=>{
-                    const ts = r.timestamp || r.date || '';
-                    const d = normalizeDateString(ts) || normalizeDateString((ts||'').slice(0,10));
+                  const selPeriod = (periodSelect && periodSelect.value) || '1-15';
+                  const periodStart = selPeriod === '1-15' ? 1 : 16;
+                  const periodEnd = selPeriod === '1-15' ? 15 : new Date(selY, selM, 0).getDate();
+                  const periodLabel = `${periodSelect ? periodSelect.options[periodSelect.selectedIndex].text : ''} ${monthSelect ? monthSelect.options[monthSelect.selectedIndex].text : ''}`.trim();
+                  rowsInPeriod = rows.filter(r=>{
+                    const ci = r.check_in || '';
+                    const d = normalizeDateString(ci) || normalizeDateString((ci||'').slice(0,10));
                     if (!d) return false;
-                    return d.getFullYear()===selY && d.getMonth()+1===selM;
+                    return d.getFullYear()===selY && d.getMonth()+1===selM && d.getDate()>=periodStart && d.getDate()<=periodEnd;
                   });
                   const agentTotals = {};
                   const toFloat = v=>{ const n = parseFloat(String(v).replace(/[^0-9.\-]/g,'')); return Number.isFinite(n)?n:0; };
-                  rowsThisMonth.forEach(r=>{
+                  rowsInPeriod.forEach(r=>{
                     const name = (r.agent_name || 'Unknown')
                     const amt = toFloat(r.agent_commission || 0);
                     agentTotals[name] = (agentTotals[name] || 0) + amt;
@@ -1132,12 +1144,12 @@
                   // render two summary boxes: total and per-agent list
                   const summaryDiv = document.createElement('div'); summaryDiv.className='grid grid-cols-2 gap-4 mb-4';
                   const fmt = v=> new Intl.NumberFormat(undefined,{style:'currency',currency:'PHP',maximumFractionDigits:2}).format(v);
-                  const left = document.createElement('div'); left.className='rounded-lg border p-4 bg-emerald-50'; left.innerHTML = `<p class="text-sm font-medium text-emerald-700">Total commissions (this month)</p><p class="mt-2 text-2xl font-semibold text-emerald-900">${fmt(total)}</p>`;
+                  const left = document.createElement('div'); left.className='rounded-lg border p-4 bg-emerald-50'; left.innerHTML = `<p class="text-sm font-medium text-emerald-700">Total commissions (${escapeHTML(periodLabel)})</p><p class="mt-2 text-2xl font-semibold text-emerald-900">${fmt(total)}</p>`;
                   const right = document.createElement('div'); right.className='rounded-lg border p-4 bg-white';
                   const sorted = Object.entries(agentTotals).sort((a,b)=>b[1]-a[1]);
                   const topAgent = sorted.length? sorted[0][0] : null;
                   // render per-agent as cards similar to the Total box
-                  let cardsHtml = `<div class="flex items-center justify-between"><p class="text-sm font-medium text-slate-700">Per agent (${escapeHTML(monthSelect ? monthSelect.options[monthSelect.selectedIndex].text : (now.toLocaleString('default',{month:'long'})+' '+now.getFullYear()))})</p></div><div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3" id="per-agent-list">`;
+                  let cardsHtml = `<div class="flex items-center justify-between"><p class="text-sm font-medium text-slate-700">Per agent (${escapeHTML(periodLabel)})</p></div><div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3" id="per-agent-list">`;
                   sorted.forEach(([name,amt])=>{
                     const isTop = (name === topAgent);
                     const cardBg = isTop ? 'bg-amber-50' : 'bg-white';
@@ -1151,89 +1163,118 @@
                   });
                   cardsHtml += '</div>';
                   right.innerHTML = cardsHtml;
-                  // if monthSelect exists, wire change handler to re-trigger the nav click to reload payroll for the new month
+                  // reload payroll whenever the selected month or period changes
                   if (monthSelect && !monthSelect._payroll_wired){
                     monthSelect.addEventListener('change', ()=>{ navPayroll.click(); });
                     monthSelect._payroll_wired = true;
+                  }
+                  if (periodSelect && !periodSelect._payroll_wired){
+                    periodSelect.addEventListener('change', ()=>{ navPayroll.click(); });
+                    periodSelect._payroll_wired = true;
                   }
                   summaryDiv.appendChild(left); summaryDiv.appendChild(right);
                   container.appendChild(summaryDiv);
                 }catch(err){ console.error('payroll summary', err); }
 
-                // render table
+                // status tabs keep "Sent" (already paid out) entries separate from "Pending" ones
                 const isAdminUser = currentActorType === 'admin';
-                let bulkStatusSelect, bulkApplyBtn, selectAllCheckbox;
-                if (isAdminUser){
-                  const bulkBar = document.createElement('div');
-                  bulkBar.className = 'flex items-center gap-2 mb-3';
-                  bulkBar.innerHTML = `
-                    <select id="payroll-bulk-status" class="rounded border p-2 text-sm">
-                      <option value="Sent">Sent</option>
-                      <option value="Pending">Pending</option>
-                    </select>
-                    <button id="payroll-bulk-apply" type="button" disabled class="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:opacity-40">Apply to selected</button>
-                    <span id="payroll-bulk-message" class="text-sm text-slate-500"></span>
-                  `;
-                  container.appendChild(bulkBar);
-                  bulkStatusSelect = bulkBar.querySelector('#payroll-bulk-status');
-                  bulkApplyBtn = bulkBar.querySelector('#payroll-bulk-apply');
-                }
+                const statusTabs = document.createElement('div'); statusTabs.className = 'flex items-center gap-2 mb-3';
+                statusTabs.innerHTML = `
+                  <button type="button" id="payroll-tab-pending" class="rounded-lg px-3 py-1.5 text-sm font-medium border">Pending</button>
+                  <button type="button" id="payroll-tab-sent" class="rounded-lg px-3 py-1.5 text-sm font-medium border">Sent</button>
+                `;
+                container.appendChild(statusTabs);
+                const tabPending = statusTabs.querySelector('#payroll-tab-pending');
+                const tabSent = statusTabs.querySelector('#payroll-tab-sent');
+                const tableSection = document.createElement('div'); tableSection.id = 'payroll-table-section';
+                container.appendChild(tableSection);
 
-                const table = document.createElement('table'); table.className='w-full text-sm';
-                const thead = document.createElement('thead');
-                thead.innerHTML = isAdminUser
-                  ? '<tr class="text-left text-slate-600"><th class="p-2"><input type="checkbox" id="payroll-select-all" /></th><th class="p-2">Timestamp</th><th class="p-2">Booking ID</th><th class="p-2">Agent</th><th class="p-2">Commission</th><th class="p-2">Status</th></tr>'
-                  : '<tr class="text-left text-slate-600"><th class="p-2">Timestamp</th><th class="p-2">Booking ID</th><th class="p-2">Agent</th><th class="p-2">Commission</th><th class="p-2">Status</th></tr>';
-                table.appendChild(thead);
-                const tbody = document.createElement('tbody');
-                rows.forEach(r=>{
-                  const tr = document.createElement('tr');
-                  const checkboxCell = isAdminUser
-                    ? `<td class="p-2">${r.booking_id ? `<input type="checkbox" class="payroll-row-checkbox" value="${escapeHTML(r.booking_id)}" />` : ''}</td>`
-                    : '';
-                  tr.innerHTML = `${checkboxCell}<td class="p-2">${escapeHTML(r.timestamp||r.date||'')}</td><td class="p-2">${escapeHTML(r.booking_id||'')}</td><td class="p-2">${escapeHTML(r.agent_name||'')}</td><td class="p-2">${escapeHTML(r.agent_commission||'')}</td><td class="p-2">${escapeHTML(r.status||'')}</td>`;
-                  tbody.appendChild(tr);
-                });
-                table.appendChild(tbody); container.appendChild(table);
+                let activeStatusTab = 'Pending';
 
-                if (isAdminUser){
-                  selectAllCheckbox = table.querySelector('#payroll-select-all');
-                  const rowCheckboxes = () => Array.from(table.querySelectorAll('.payroll-row-checkbox'));
-                  const refreshApplyState = () => { bulkApplyBtn.disabled = rowCheckboxes().filter(cb=>cb.checked).length === 0; };
-                  if (selectAllCheckbox){
-                    selectAllCheckbox.addEventListener('change', ()=>{
-                      rowCheckboxes().forEach(cb=> cb.checked = selectAllCheckbox.checked);
-                      refreshApplyState();
+                function renderPayrollTable(){
+                  tabPending.className = `rounded-lg px-3 py-1.5 text-sm font-medium border ${activeStatusTab==='Pending' ? 'bg-slate-900 text-white' : 'bg-white text-slate-700'}`;
+                  tabSent.className = `rounded-lg px-3 py-1.5 text-sm font-medium border ${activeStatusTab==='Sent' ? 'bg-slate-900 text-white' : 'bg-white text-slate-700'}`;
+                  tableSection.innerHTML = '';
+
+                  const tabRows = rowsInPeriod.filter(r=> (r.status || 'Pending').trim().toLowerCase() === activeStatusTab.toLowerCase());
+
+                  let bulkStatusSelect, bulkApplyBtn, selectAllCheckbox;
+                  if (isAdminUser){
+                    const bulkBar = document.createElement('div');
+                    bulkBar.className = 'flex items-center gap-2 mb-3';
+                    bulkBar.innerHTML = `
+                      <select id="payroll-bulk-status" class="rounded border p-2 text-sm">
+                        <option value="Sent">Sent</option>
+                        <option value="Pending">Pending</option>
+                      </select>
+                      <button id="payroll-bulk-apply" type="button" disabled class="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:opacity-40">Apply to selected</button>
+                      <span id="payroll-bulk-message" class="text-sm text-slate-500"></span>
+                    `;
+                    tableSection.appendChild(bulkBar);
+                    bulkStatusSelect = bulkBar.querySelector('#payroll-bulk-status');
+                    bulkApplyBtn = bulkBar.querySelector('#payroll-bulk-apply');
+                  }
+
+                  const table = document.createElement('table'); table.className='w-full text-sm';
+                  const thead = document.createElement('thead');
+                  thead.innerHTML = isAdminUser
+                    ? '<tr class="text-left text-slate-600"><th class="p-2"><input type="checkbox" id="payroll-select-all" /></th><th class="p-2">Unit</th><th class="p-2">Check-in</th><th class="p-2">Check-out</th><th class="p-2">Agent</th><th class="p-2">Commission</th><th class="p-2">Status</th></tr>'
+                    : '<tr class="text-left text-slate-600"><th class="p-2">Unit</th><th class="p-2">Check-in</th><th class="p-2">Check-out</th><th class="p-2">Agent</th><th class="p-2">Commission</th><th class="p-2">Status</th></tr>';
+                  table.appendChild(thead);
+                  const tbody = document.createElement('tbody');
+                  tabRows.forEach(r=>{
+                    const tr = document.createElement('tr');
+                    const checkboxCell = isAdminUser
+                      ? `<td class="p-2">${r.booking_id ? `<input type="checkbox" class="payroll-row-checkbox" value="${escapeHTML(r.booking_id)}" />` : ''}</td>`
+                      : '';
+                    tr.innerHTML = `${checkboxCell}<td class="p-2">${escapeHTML(r.unit_id||'')}</td><td class="p-2">${escapeHTML(r.check_in||'')}</td><td class="p-2">${escapeHTML(r.check_out||'')}</td><td class="p-2">${escapeHTML(r.agent_name||'')}</td><td class="p-2">${escapeHTML(r.agent_commission||'')}</td><td class="p-2">${escapeHTML(r.status||'')}</td>`;
+                    tbody.appendChild(tr);
+                  });
+                  table.appendChild(tbody); tableSection.appendChild(table);
+
+                  if (isAdminUser){
+                    selectAllCheckbox = table.querySelector('#payroll-select-all');
+                    const rowCheckboxes = () => Array.from(table.querySelectorAll('.payroll-row-checkbox'));
+                    const refreshApplyState = () => { bulkApplyBtn.disabled = rowCheckboxes().filter(cb=>cb.checked).length === 0; };
+                    if (selectAllCheckbox){
+                      selectAllCheckbox.addEventListener('change', ()=>{
+                        rowCheckboxes().forEach(cb=> cb.checked = selectAllCheckbox.checked);
+                        refreshApplyState();
+                      });
+                    }
+                    rowCheckboxes().forEach(cb=> cb.addEventListener('change', refreshApplyState));
+                    bulkApplyBtn.addEventListener('click', async ()=>{
+                      const selectedIds = rowCheckboxes().filter(cb=>cb.checked).map(cb=>cb.value);
+                      if (!selectedIds.length) return;
+                      const bulkMsg = document.getElementById('payroll-bulk-message');
+                      bulkApplyBtn.disabled = true;
+                      if (bulkMsg) bulkMsg.textContent = 'Updating...';
+                      try{
+                        const body = new URLSearchParams({ booking_ids: selectedIds.join(','), status: bulkStatusSelect.value });
+                        const res = await fetch(base + '/api/agent_payroll/update_status', {
+                          method: 'POST',
+                          headers: { 'Authorization': authHeader, 'Content-Type': 'application/x-www-form-urlencoded' },
+                          body: body.toString(),
+                        });
+                        const resData = await res.json().catch(()=>({}));
+                        if (!res.ok){
+                          if (bulkMsg) bulkMsg.textContent = resData.detail || 'Failed to update status.';
+                          bulkApplyBtn.disabled = false;
+                          return;
+                        }
+                        if (bulkMsg) bulkMsg.textContent = `Updated ${resData.updated || 0} row(s).`;
+                        navPayroll.dispatchEvent(new Event('click'));
+                      }catch(e){
+                        if (bulkMsg) bulkMsg.textContent = 'Network error updating status.';
+                        bulkApplyBtn.disabled = false;
+                      }
                     });
                   }
-                  rowCheckboxes().forEach(cb=> cb.addEventListener('change', refreshApplyState));
-                  bulkApplyBtn.addEventListener('click', async ()=>{
-                    const selectedIds = rowCheckboxes().filter(cb=>cb.checked).map(cb=>cb.value);
-                    if (!selectedIds.length) return;
-                    const bulkMsg = document.getElementById('payroll-bulk-message');
-                    bulkApplyBtn.disabled = true;
-                    if (bulkMsg) bulkMsg.textContent = 'Updating...';
-                    try{
-                      const body = new URLSearchParams({ booking_ids: selectedIds.join(','), status: bulkStatusSelect.value });
-                      const res = await fetch(base + '/api/agent_payroll/update_status', {
-                        method: 'POST',
-                        headers: { 'Authorization': authHeader, 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: body.toString(),
-                      });
-                      const resData = await res.json().catch(()=>({}));
-                      if (!res.ok){
-                        if (bulkMsg) bulkMsg.textContent = resData.detail || 'Failed to update status.';
-                        bulkApplyBtn.disabled = false;
-                        return;
-                      }
-                      if (bulkMsg) bulkMsg.textContent = `Updated ${resData.updated || 0} row(s).`;
-                      navPayroll.dispatchEvent(new Event('click'));
-                    }catch(e){
-                      if (bulkMsg) bulkMsg.textContent = 'Network error updating status.';
-                      bulkApplyBtn.disabled = false;
-                    }
-                  });
                 }
+
+                tabPending.addEventListener('click', ()=>{ activeStatusTab = 'Pending'; renderPayrollTable(); });
+                tabSent.addEventListener('click', ()=>{ activeStatusTab = 'Sent'; renderPayrollTable(); });
+                renderPayrollTable();
               }catch(err){ console.error('loadAgentPayroll', err); msg.textContent = 'Error loading payroll: '+(err.message||err); }
             });
           }
