@@ -1048,7 +1048,7 @@
           const payrollClose = document.getElementById('close-payroll');
           const mainGrid = document.querySelector('.grid');
           function showPayroll(){ if (mainGrid) mainGrid.style.display = 'none'; if (payrollPanel) payrollPanel.style.display = 'block'; }
-          function hidePayroll(){ try{ if (mainGrid) mainGrid.style.display = ''; if (payrollPanel) payrollPanel.style.display = 'none'; const ms = document.getElementById('payroll-month-select'); if (ms && ms.parentNode) ms.parentNode.removeChild(ms); const yc = document.getElementById('payroll-year-chart-box'); if (yc && yc.parentNode) yc.parentNode.removeChild(yc); const pc = document.getElementById('payroll-table-container'); if (pc) pc.innerHTML=''; }catch(e){console.error('hidePayroll',e);} }
+          function hidePayroll(){ try{ if (mainGrid) mainGrid.style.display = ''; if (payrollPanel) payrollPanel.style.display = 'none'; const ms = document.getElementById('payroll-month-select'); if (ms && ms.parentNode) ms.parentNode.removeChild(ms); const yc = document.getElementById('payroll-year-chart-box'); if (yc && yc.parentNode) yc.parentNode.removeChild(yc); const bc = document.getElementById('payroll-bookings-chart-box'); if (bc && bc.parentNode) bc.parentNode.removeChild(bc); const pc = document.getElementById('payroll-table-container'); if (pc) pc.innerHTML=''; }catch(e){console.error('hidePayroll',e);} }
 
           function cleanupPanels(){ try{ hidePayroll(); if (typeof hideCaretaker === 'function') hideCaretaker(); if (typeof hideAnalytics === 'function') hideAnalytics(); }catch(e){console.error('cleanupPanels',e);} }
           // bookings nav should close payroll and go back to calendar
@@ -1174,6 +1174,70 @@
                   }
                   summaryDiv.appendChild(left); summaryDiv.appendChild(right);
                   container.appendChild(summaryDiv);
+
+                  // bookings-per-month chart (all bookings, stacked by agent incl. Admin) so volume can be monitored for everyone
+                  if (currentActorType === 'admin'){
+                    try{
+                      const bookingsRes = await fetch(base + '/api/bookings');
+                      const bookingsData = await bookingsRes.json();
+                      const allBookings = (bookingsData && bookingsData.bookings) || [];
+                      const yearMonths = [];
+                      for (let m=1; m<=12; m++){ yearMonths.push(new Date(selY, m-1, 1)); }
+                      const bookingAgentColors = { 'Alexis': '#2563eb', 'Maricon': '#f97316', 'Kath': '#10b981', 'Admin': '#64748b' };
+                      const bookingDefaultColor = '#94a3b8';
+                      const bookingAgentNames = Array.from(new Set(allBookings.map(b => b.agent_name || 'Unknown')));
+                      const monthlyBookingCounts = yearMonths.map(d=>{
+                        const y = d.getFullYear(), m = d.getMonth()+1;
+                        const counts = {};
+                        allBookings.forEach(b=>{
+                          const ci = b.check_in || '';
+                          const cd = normalizeDateString(ci) || normalizeDateString((ci||'').slice(0,10));
+                          if (!cd || cd.getFullYear()!==y || cd.getMonth()+1!==m) return;
+                          const name = b.agent_name || 'Unknown';
+                          counts[name] = (counts[name] || 0) + 1;
+                        });
+                        return counts;
+                      });
+                      const monthBookingTotalSums = monthlyBookingCounts.map(t => Object.values(t).reduce((s,v)=>s+v, 0));
+                      const bookingsChartMax = Math.max(1, ...monthBookingTotalSums);
+                      const bookingsChartLabels = yearMonths.map(d=> d.toLocaleString('default',{month:'short'}));
+
+                      const oldBookingsChartBox = document.getElementById('payroll-bookings-chart-box');
+                      if (oldBookingsChartBox && oldBookingsChartBox.parentNode) oldBookingsChartBox.parentNode.removeChild(oldBookingsChartBox);
+                      const bookingsChartBox = document.createElement('div'); bookingsChartBox.id = 'payroll-bookings-chart-box'; bookingsChartBox.className = 'mb-6';
+                      const bookingsChartTitle = document.createElement('h4'); bookingsChartTitle.className='text-sm font-medium text-slate-700 mb-2'; bookingsChartTitle.textContent = `Bookings per Month (${selY})`;
+                      bookingsChartBox.appendChild(bookingsChartTitle);
+
+                      const bookingsLegend = document.createElement('div'); bookingsLegend.className = 'flex flex-wrap items-center gap-4 mb-3';
+                      bookingAgentNames.forEach(name=>{
+                        const item = document.createElement('div'); item.className = 'flex items-center gap-1.5 text-xs text-slate-600';
+                        const swatch = document.createElement('span'); swatch.style.display='inline-block'; swatch.style.width='10px'; swatch.style.height='10px'; swatch.style.borderRadius='2px'; swatch.style.background = bookingAgentColors[name] || bookingDefaultColor;
+                        item.appendChild(swatch); item.appendChild(document.createTextNode(name));
+                        bookingsLegend.appendChild(item);
+                      });
+                      bookingsChartBox.appendChild(bookingsLegend);
+
+                      const bookingsColHeight = 160;
+                      const bookingsChartWrap = document.createElement('div'); bookingsChartWrap.style.display='flex'; bookingsChartWrap.style.alignItems='flex-end'; bookingsChartWrap.style.gap='12px'; bookingsChartWrap.style.width='100%'; bookingsChartWrap.style.maxWidth='900px'; bookingsChartWrap.style.borderBottom='1px solid #e2e8f0'; bookingsChartWrap.style.paddingBottom='4px';
+                      bookingsChartLabels.forEach((lbl,i)=>{
+                        const group = document.createElement('div'); group.style.display='flex'; group.style.flexDirection='column'; group.style.alignItems='center'; group.style.flex='1';
+                        const stack = document.createElement('div'); stack.style.display='flex'; stack.style.flexDirection='column-reverse'; stack.style.width='24px'; stack.style.height = bookingsColHeight + 'px';
+                        bookingAgentNames.forEach(name=>{
+                          const val = monthlyBookingCounts[i][name] || 0;
+                          if (val <= 0) return;
+                          const h = Math.round((val/bookingsChartMax)*bookingsColHeight);
+                          const seg = document.createElement('div');
+                          seg.title = `${name}: ${val}`;
+                          seg.style.width='100%'; seg.style.height = h + 'px'; seg.style.background = bookingAgentColors[name] || bookingDefaultColor;
+                          stack.appendChild(seg);
+                        });
+                        const lab = document.createElement('div'); lab.style.fontSize='11px'; lab.style.color='#475569'; lab.style.marginTop='6px'; lab.textContent = lbl;
+                        group.appendChild(stack); group.appendChild(lab); bookingsChartWrap.appendChild(group);
+                      });
+                      bookingsChartBox.appendChild(bookingsChartWrap);
+                      container.parentNode.insertBefore(bookingsChartBox, monthSelect);
+                    }catch(bErr){ console.error('bookings per month chart', bErr); }
+                  }
 
                   // whole-year chart so monthly payroll totals can be compared at a glance (admin only)
                   if (currentActorType === 'admin'){

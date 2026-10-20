@@ -243,11 +243,12 @@ def append_booking(booking_summary: dict):
         except Exception:
             pass
 
-    # Append payroll entry
+    # Append payroll entry (skip bookings made directly by admin, not an agent)
     try:
-        payroll_ws = spreadsheet.worksheet("Agent Payroll")
-        payroll_row = [created_at, booking_summary.get("booking_id", ""), booking_summary.get("agent_name", ""), booking_summary.get("agent_commission", ""), booking_summary.get("status", "Pending")]
-        payroll_ws.append_row(payroll_row, value_input_option="USER_ENTERED")
+        if str(booking_summary.get("agent_name", "")).strip().lower() != "admin":
+            payroll_ws = spreadsheet.worksheet("Agent Payroll")
+            payroll_row = [created_at, booking_summary.get("booking_id", ""), booking_summary.get("agent_name", ""), booking_summary.get("agent_commission", ""), booking_summary.get("status", "Pending")]
+            payroll_ws.append_row(payroll_row, value_input_option="USER_ENTERED")
     except Exception:
         pass
 
@@ -1051,6 +1052,9 @@ def get_agent_payroll() -> list[dict]:
         data_rows = values[1:]
         for row in data_rows:
             record = {headers[i] if i < len(headers) else f"col_{i}": (row[i] if i < len(row) else "") for i in range(len(headers))}
+            # admin-made bookings aren't an agent's commission, so keep them out of payroll
+            if str(record.get("agent_name", "")).strip().lower() == "admin":
+                continue
             records.append(record)
     except Exception:
         return []
