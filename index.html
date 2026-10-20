@@ -1468,6 +1468,14 @@
               }
               const bookingsPrev = monthly.map(m => prevYearValue(m, 'bookings'));
               const revenuePrev = monthly.map(m => prevYearValue(m, 'gross_revenue'));
+              const monthNetIncome = m => Number(m.owner_net ?? m.net_income ?? 0) || 0;
+              const netIncome = monthly.map(m => Math.round(monthNetIncome(m)*100)/100);
+              const netIncomePrev = monthly.map(m => {
+                const parts = m.month.split('-');
+                const y = parseInt(parts[0],10) - 1;
+                const prev = monthlyByKey[`${y}-${parts[1]}`];
+                return prev ? Math.round(monthNetIncome(prev)*100)/100 : 0;
+              });
               const totalNetIncome = monthly.reduce((sum, m) => sum + (Number(m.owner_net ?? m.net_income ?? 0) || 0), 0);
               const totalCleaningFees = monthly.reduce((sum, m) => sum + (Number(m.cleaning_fee || 0) || 0), 0);
 
@@ -1547,9 +1555,10 @@
                 table.appendChild(tbody); box.appendChild(table); parent.appendChild(box);
               }
 
-              // render two charts: bookings and revenue
+              // render three charts: bookings, revenue, and net income
               renderBarChart(container, 'Bookings per Month', labels, bookings, bookingsPrev, { color: '#0ea5a4', formatValue: v=>String(v) });
               renderBarChart(container, 'Gross Revenue per Month', labels, revenue, revenuePrev, { color: '#2563eb', formatValue: v=>new Intl.NumberFormat(undefined,{style:'currency',currency:'PHP'}).format(v) });
+              renderBarChart(container, 'Net Income per Month', labels, netIncome, netIncomePrev, { color: '#15803d', formatValue: v=>new Intl.NumberFormat(undefined,{style:'currency',currency:'PHP'}).format(v) });
 
               const perUnitRows = analytics.per_unit || [];
               renderSummaryTable(container, 'Gross and Net per Unit', perUnitRows, [
