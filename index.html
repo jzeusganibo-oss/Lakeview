@@ -1176,27 +1176,28 @@
                   container.appendChild(summaryDiv);
                 }catch(err){ console.error('payroll summary', err); }
 
-                // status tabs keep "Sent" (already paid out) entries separate from "Pending" ones
+                // status filter dropdown keeps "Sent" (already paid out) entries separate from "Pending" ones
                 const isAdminUser = currentActorType === 'admin';
                 const statusTabs = document.createElement('div'); statusTabs.className = 'flex items-center gap-2 mb-3';
                 statusTabs.innerHTML = `
-                  <button type="button" id="payroll-tab-pending" class="rounded-lg px-3 py-1.5 text-sm font-medium border">Pending</button>
-                  <button type="button" id="payroll-tab-sent" class="rounded-lg px-3 py-1.5 text-sm font-medium border">Sent</button>
+                  <select id="payroll-status-filter" class="rounded border p-2 text-sm">
+                    <option value="All">All</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Sent">Sent</option>
+                  </select>
                 `;
                 container.appendChild(statusTabs);
-                const tabPending = statusTabs.querySelector('#payroll-tab-pending');
-                const tabSent = statusTabs.querySelector('#payroll-tab-sent');
+                const statusFilter = statusTabs.querySelector('#payroll-status-filter');
                 const tableSection = document.createElement('div'); tableSection.id = 'payroll-table-section';
                 container.appendChild(tableSection);
 
-                let activeStatusTab = 'Pending';
-
                 function renderPayrollTable(){
-                  tabPending.className = `rounded-lg px-3 py-1.5 text-sm font-medium border ${activeStatusTab==='Pending' ? 'bg-slate-900 text-white' : 'bg-white text-slate-700'}`;
-                  tabSent.className = `rounded-lg px-3 py-1.5 text-sm font-medium border ${activeStatusTab==='Sent' ? 'bg-slate-900 text-white' : 'bg-white text-slate-700'}`;
                   tableSection.innerHTML = '';
 
-                  const tabRows = rowsInPeriod.filter(r=> (r.status || 'Pending').trim().toLowerCase() === activeStatusTab.toLowerCase());
+                  const activeStatusFilter = statusFilter.value;
+                  const tabRows = activeStatusFilter === 'All'
+                    ? rowsInPeriod
+                    : rowsInPeriod.filter(r=> (r.status || 'Pending').trim().toLowerCase() === activeStatusFilter.toLowerCase());
 
                   let bulkStatusSelect, bulkApplyBtn, selectAllCheckbox;
                   if (isAdminUser){
@@ -1272,8 +1273,7 @@
                   }
                 }
 
-                tabPending.addEventListener('click', ()=>{ activeStatusTab = 'Pending'; renderPayrollTable(); });
-                tabSent.addEventListener('click', ()=>{ activeStatusTab = 'Sent'; renderPayrollTable(); });
+                statusFilter.addEventListener('change', renderPayrollTable);
                 renderPayrollTable();
               }catch(err){ console.error('loadAgentPayroll', err); msg.textContent = 'Error loading payroll: '+(err.message||err); }
             });
