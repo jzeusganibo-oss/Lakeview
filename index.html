@@ -1048,7 +1048,7 @@
           const payrollClose = document.getElementById('close-payroll');
           const mainGrid = document.querySelector('.grid');
           function showPayroll(){ if (mainGrid) mainGrid.style.display = 'none'; if (payrollPanel) payrollPanel.style.display = 'block'; }
-          function hidePayroll(){ try{ if (mainGrid) mainGrid.style.display = ''; if (payrollPanel) payrollPanel.style.display = 'none'; const ms = document.getElementById('payroll-month-select'); if (ms && ms.parentNode) ms.parentNode.removeChild(ms); const pc = document.getElementById('payroll-table-container'); if (pc) pc.innerHTML=''; }catch(e){console.error('hidePayroll',e);} }
+          function hidePayroll(){ try{ if (mainGrid) mainGrid.style.display = ''; if (payrollPanel) payrollPanel.style.display = 'none'; const ms = document.getElementById('payroll-month-select'); if (ms && ms.parentNode) ms.parentNode.removeChild(ms); const yc = document.getElementById('payroll-year-chart-box'); if (yc && yc.parentNode) yc.parentNode.removeChild(yc); const pc = document.getElementById('payroll-table-container'); if (pc) pc.innerHTML=''; }catch(e){console.error('hidePayroll',e);} }
 
           function cleanupPanels(){ try{ hidePayroll(); if (typeof hideCaretaker === 'function') hideCaretaker(); if (typeof hideAnalytics === 'function') hideAnalytics(); }catch(e){console.error('cleanupPanels',e);} }
           // bookings nav should close payroll and go back to calendar
@@ -1197,7 +1197,9 @@
                     const monthTotalSums = monthlyAgentTotals.map(t => Object.values(t).reduce((s,v)=>s+v, 0));
                     const chartMax = Math.max(1, ...monthTotalSums);
                     const chartLabels = yearMonths.map(d=> d.toLocaleString('default',{month:'short'}));
-                    const chartBox = document.createElement('div'); chartBox.className = 'mb-6';
+                    const oldChartBox = document.getElementById('payroll-year-chart-box');
+                    if (oldChartBox && oldChartBox.parentNode) oldChartBox.parentNode.removeChild(oldChartBox);
+                    const chartBox = document.createElement('div'); chartBox.id = 'payroll-year-chart-box'; chartBox.className = 'mb-6';
                     const chartTitle = document.createElement('h4'); chartTitle.className='text-sm font-medium text-slate-700 mb-2'; chartTitle.textContent = `Total Payroll per Month (${selY})`;
                     chartBox.appendChild(chartTitle);
 
@@ -1229,7 +1231,8 @@
                       group.appendChild(stack); group.appendChild(lab); chartWrap.appendChild(group);
                     });
                     chartBox.appendChild(chartWrap);
-                    container.appendChild(chartBox);
+                    // shown above the month/period dropdowns instead of inside the table container
+                    container.parentNode.insertBefore(chartBox, monthSelect);
                   }
                 }catch(err){ console.error('payroll summary', err); }
 
