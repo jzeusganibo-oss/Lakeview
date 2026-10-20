@@ -1174,6 +1174,36 @@
                   }
                   summaryDiv.appendChild(left); summaryDiv.appendChild(right);
                   container.appendChild(summaryDiv);
+
+                  // whole-year chart so monthly payroll totals can be compared at a glance (admin only)
+                  if (currentActorType === 'admin'){
+                    const yearMonths = [];
+                    for (let m=1; m<=12; m++){ yearMonths.push(new Date(selY, m-1, 1)); }
+                    const monthTotals = yearMonths.map(d=>{
+                      const y = d.getFullYear(), m = d.getMonth()+1;
+                      const sum = rows.filter(r=>{
+                        const ci = r.check_in || '';
+                        const cd = normalizeDateString(ci) || normalizeDateString((ci||'').slice(0,10));
+                        return cd && cd.getFullYear()===y && cd.getMonth()+1===m;
+                      }).reduce((s,r)=> s + toFloat(r.agent_commission || 0), 0);
+                      return Math.round(sum*100)/100;
+                    });
+                    const chartLabels = yearMonths.map(d=> d.toLocaleString('default',{month:'short'}));
+                    const chartBox = document.createElement('div'); chartBox.className = 'mb-6';
+                    const chartTitle = document.createElement('h4'); chartTitle.className='text-sm font-medium text-slate-700 mb-2'; chartTitle.textContent = `Total Payroll per Month (${selY})`;
+                    chartBox.appendChild(chartTitle);
+                    const chartWrap = document.createElement('div'); chartWrap.style.width='100%'; chartWrap.style.maxWidth='720px';
+                    const maxVal = Math.max(...monthTotals, 1);
+                    chartLabels.forEach((lbl,i)=>{
+                      const row = document.createElement('div'); row.style.display='flex'; row.style.alignItems='center'; row.style.marginBottom='6px';
+                      const lab = document.createElement('div'); lab.style.width='90px'; lab.style.fontSize='12px'; lab.style.color='#475569'; lab.textContent = lbl;
+                      const barwrap = document.createElement('div'); barwrap.style.flex='1'; barwrap.style.marginLeft='8px'; barwrap.style.background='#f1f5f9'; barwrap.style.borderRadius='6px';
+                      const bar = document.createElement('div'); const pct = Math.round((monthTotals[i]/maxVal)*100); bar.style.width = pct + '%'; bar.style.height='20px'; bar.style.borderRadius='6px'; bar.style.background = '#7c3aed'; bar.style.color='#fff'; bar.style.paddingLeft='8px'; bar.style.fontSize='12px'; bar.textContent = fmt(monthTotals[i]);
+                      barwrap.appendChild(bar); row.appendChild(lab); row.appendChild(barwrap); chartWrap.appendChild(row);
+                    });
+                    chartBox.appendChild(chartWrap);
+                    container.appendChild(chartBox);
+                  }
                 }catch(err){ console.error('payroll summary', err); }
 
                 // status filter dropdown keeps "Sent" (already paid out) entries separate from "Pending" ones
