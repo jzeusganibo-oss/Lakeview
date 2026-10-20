@@ -1194,7 +1194,8 @@
                       });
                       return totals;
                     });
-                    const chartMax = Math.max(1, ...monthlyAgentTotals.flatMap(t => Object.values(t)));
+                    const monthTotalSums = monthlyAgentTotals.map(t => Object.values(t).reduce((s,v)=>s+v, 0));
+                    const chartMax = Math.max(1, ...monthTotalSums);
                     const chartLabels = yearMonths.map(d=> d.toLocaleString('default',{month:'short'}));
                     const chartBox = document.createElement('div'); chartBox.className = 'mb-6';
                     const chartTitle = document.createElement('h4'); chartTitle.className='text-sm font-medium text-slate-700 mb-2'; chartTitle.textContent = `Total Payroll per Month (${selY})`;
@@ -1213,17 +1214,19 @@
                     const chartWrap = document.createElement('div'); chartWrap.style.display='flex'; chartWrap.style.alignItems='flex-end'; chartWrap.style.gap='12px'; chartWrap.style.width='100%'; chartWrap.style.maxWidth='900px'; chartWrap.style.borderBottom='1px solid #e2e8f0'; chartWrap.style.paddingBottom='4px';
                     chartLabels.forEach((lbl,i)=>{
                       const group = document.createElement('div'); group.style.display='flex'; group.style.flexDirection='column'; group.style.alignItems='center'; group.style.flex='1';
-                      const bars = document.createElement('div'); bars.style.display='flex'; bars.style.alignItems='flex-end'; bars.style.gap='3px'; bars.style.height = colHeight + 'px';
+                      // single column stacked bottom-up with one colored segment per agent
+                      const stack = document.createElement('div'); stack.style.display='flex'; stack.style.flexDirection='column-reverse'; stack.style.width='24px'; stack.style.height = colHeight + 'px';
                       agentNames.forEach(name=>{
                         const val = monthlyAgentTotals[i][name] || 0;
+                        if (val <= 0) return;
                         const h = Math.round((val/chartMax)*colHeight);
-                        const col = document.createElement('div');
-                        col.title = `${name}: ${fmt(val)}`;
-                        col.style.width='14px'; col.style.height = h + 'px'; col.style.background = agentColors[name] || defaultColor; col.style.borderRadius='3px 3px 0 0';
-                        bars.appendChild(col);
+                        const seg = document.createElement('div');
+                        seg.title = `${name}: ${fmt(val)}`;
+                        seg.style.width='100%'; seg.style.height = h + 'px'; seg.style.background = agentColors[name] || defaultColor;
+                        stack.appendChild(seg);
                       });
                       const lab = document.createElement('div'); lab.style.fontSize='11px'; lab.style.color='#475569'; lab.style.marginTop='6px'; lab.textContent = lbl;
-                      group.appendChild(bars); group.appendChild(lab); chartWrap.appendChild(group);
+                      group.appendChild(stack); group.appendChild(lab); chartWrap.appendChild(group);
                     });
                     chartBox.appendChild(chartWrap);
                     container.appendChild(chartBox);
