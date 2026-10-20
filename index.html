@@ -659,7 +659,6 @@
 
           if (dayEvents.length) {
             td.classList.add('booked-cell');
-            const b = document.createElement('div'); b.className='booked-badge'; b.textContent= dayEvents.length>1? 'Booked ('+dayEvents.length+')':'Booked'; td.appendChild(b);
 
             // group bookings into fully-paid vs cancelled vs pending, each shown once with its unit IDs below it
             const isPaid = ev => String(ev.status||'').trim().toLowerCase() === 'fully paid';
