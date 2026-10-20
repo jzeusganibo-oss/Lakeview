@@ -14,9 +14,11 @@
       #calendar .booked-badge { display:inline-block; background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-top:4px; }
       #calendar .fully-paid-badge { display:inline-block; background:#16a34a;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-top:2px; }
       #calendar .pending-badge { display:inline-block; background:#f59e0b;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-top:2px; }
+      #calendar .cancelled-badge { display:inline-block; background:#64748b;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-top:2px; }
       #calendar td.booked-cell { background: #fff2f2; border-color: #fca5a5; }
       #calendar .booking-item { font-size:10px;color:#0f172a;margin-top:3px; line-height:1.05; max-height:30px; overflow:hidden; }
       #calendar .booking-id { font-size:9px;color:#0f172a; opacity:0.9; }
+      #calendar .parking-badge { display:inline-block; background:#2563eb;color:#fff;padding:0 4px;border-radius:3px;font-size:8px;margin-left:3px; vertical-align:middle; }
       .nav-button { border:1px solid #e2e8f0;padding:6px 8px;border-radius:6px;background:#f8fafc;cursor:pointer }
       .card { border-radius:12px; border:1px solid #e6eef6; background:white; padding:16px }
     </style>
@@ -353,15 +355,20 @@
               <select name="balance_payment_method" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600">
                 <option value="">(select)</option>
                 <option value="GCash">GCash</option>
-                <option value="Bank">Bank</option>
-                <option value="Czarina">Czarina</option>
-                <option value="Tess">Tess</option>
+                <option value="BDO">BDO</option>
+                <option value="Ate Czarina">Czarina</option>
+                <option value="Ate Tess">Tess</option>
               </select>
+              <span id="edit-balance-payment-method-display" class="mt-1 block text-xs font-medium text-emerald-700"></span>
             </label>
           </div>
 
           <div id="booking-edit-message" class="text-sm"></div>
-          <button type="submit" class="w-full rounded-lg bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700">Save changes</button>
+          <div class="flex items-center gap-3">
+            <button type="submit" class="flex-1 rounded-lg bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700">Save changes</button>
+            <button type="button" id="cancel-booking-btn" class="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700 transition hover:bg-amber-100">Cancel booking</button>
+            <button type="button" id="delete-booking-btn" class="rounded-md border border-red-300 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-100">Delete booking</button>
+          </div>
         </form>
       </div>
     </div>
@@ -429,8 +436,9 @@
           const statusText = b.status || 'Pending';
           statusLabel.textContent = statusText;
           const isFullyPaid = statusText.trim().toLowerCase() === 'fully paid';
-          statusLabel.style.background = isFullyPaid ? '#dcfce7' : '#f1f5f9';
-          statusLabel.style.color = isFullyPaid ? '#166534' : '#475569';
+          const isCancelled = statusText.trim().toLowerCase() === 'cancelled';
+          statusLabel.style.background = isCancelled ? '#e2e8f0' : (isFullyPaid ? '#dcfce7' : '#f1f5f9');
+          statusLabel.style.color = isCancelled ? '#334155' : (isFullyPaid ? '#166534' : '#475569');
         }
         if (editUnitSelect) editUnitSelect.value = String(b.unit_id || '');
         bookingEditForm.querySelector('select[name="agent_name"]').value = b.agent_name || '';
@@ -442,9 +450,23 @@
         bookingEditForm.querySelector('select[name="payment_method"]').value = b.payment_method || '';
         bookingEditForm.querySelector('input[name="balance"]').value = b.balance || '';
         bookingEditForm.querySelector('input[name="paid_balance"]').value = b.paid_balance || '';
-        bookingEditForm.querySelector('select[name="balance_payment_method"]').value = b.balance_payment_method || '';
+        const balancePaymentMethodSelect = bookingEditForm.querySelector('select[name="balance_payment_method"]');
+        balancePaymentMethodSelect.value = b.balance_payment_method || '';
+        updateBalancePaymentMethodDisplay();
         if (bookingEditMessage){ bookingEditMessage.textContent = ''; bookingEditMessage.className = 'text-sm'; }
         if (bookingEditModal) bookingEditModal.style.display = 'flex';
+      }
+
+      function updateBalancePaymentMethodDisplay(){
+        const select = bookingEditForm && bookingEditForm.querySelector('select[name="balance_payment_method"]');
+        const display = document.getElementById('edit-balance-payment-method-display');
+        if (!select || !display) return;
+        display.textContent = select.value ? `Selected: ${select.value}` : '';
+      }
+
+      if (bookingEditForm){
+        const balancePaymentMethodSelect = bookingEditForm.querySelector('select[name="balance_payment_method"]');
+        if (balancePaymentMethodSelect) balancePaymentMethodSelect.addEventListener('change', updateBalancePaymentMethodDisplay);
       }
 
       if (closeBookingEdit) closeBookingEdit.addEventListener('click', hideBookingEditModal);
@@ -478,13 +500,85 @@
               const statusText = data.booking.status || 'Pending';
               statusLabel.textContent = statusText;
               const isFullyPaid = statusText.trim().toLowerCase() === 'fully paid';
-              statusLabel.style.background = isFullyPaid ? '#dcfce7' : '#f1f5f9';
-              statusLabel.style.color = isFullyPaid ? '#166534' : '#475569';
+              const isCancelled = statusText.trim().toLowerCase() === 'cancelled';
+              statusLabel.style.background = isCancelled ? '#e2e8f0' : (isFullyPaid ? '#dcfce7' : '#f1f5f9');
+              statusLabel.style.color = isCancelled ? '#334155' : (isFullyPaid ? '#166534' : '#475569');
+            }
+            if (data.booking && data.booking.balance_payment_method !== undefined){
+              const balancePaymentMethodSelect = bookingEditForm.querySelector('select[name="balance_payment_method"]');
+              if (balancePaymentMethodSelect) balancePaymentMethodSelect.value = data.booking.balance_payment_method || '';
+              updateBalancePaymentMethodDisplay();
             }
             loadCalendar();
             setTimeout(hideBookingEditModal, 900);
           }catch(e){
             if (bookingEditMessage){ bookingEditMessage.textContent = 'Network error updating booking.'; bookingEditMessage.className = 'text-sm text-red-600'; }
+          }
+        });
+      }
+
+      const cancelBookingBtn = document.getElementById('cancel-booking-btn');
+      if (cancelBookingBtn){
+        cancelBookingBtn.addEventListener('click', async ()=>{
+          const bookingId = bookingEditForm.querySelector('input[name="booking_id"]').value;
+          if (!bookingId) return;
+          if (!confirm(`Cancel booking ${bookingId}?\n\nThe reservation fee already paid will be kept (non-refundable). This booking will no longer count as pending balance.`)) return;
+          if (bookingEditMessage){ bookingEditMessage.textContent = 'Cancelling...'; bookingEditMessage.className = 'text-sm text-slate-500'; }
+          const username = document.querySelector('input[name="username"]')?.value || '';
+          const password = document.querySelector('input[name="password"]')?.value || '';
+          try{
+            const base = getApiBase();
+            const res = await fetch(base + '/api/bookings/cancel', {
+              method: 'POST',
+              headers: { 'Authorization': 'Basic ' + btoa(username + ':' + password), 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ booking_id: bookingId }),
+            });
+            const data = await res.json().catch(()=>({}));
+            if (!res.ok){
+              if (bookingEditMessage){ bookingEditMessage.textContent = data.detail || 'Failed to cancel booking.'; bookingEditMessage.className = 'text-sm text-red-600'; }
+              return;
+            }
+            if (bookingEditMessage){ bookingEditMessage.textContent = 'Booking cancelled. Reservation fee retained.'; bookingEditMessage.className = 'text-sm text-emerald-600'; }
+            const statusLabel = document.getElementById('edit-booking-status');
+            if (statusLabel){ statusLabel.textContent = 'Cancelled'; statusLabel.style.background = '#e2e8f0'; statusLabel.style.color = '#334155'; }
+            if (bookingsById[bookingId]){ bookingsById[bookingId].status = 'Cancelled'; bookingsById[bookingId].balance = 0; }
+            const balanceField = bookingEditForm.querySelector('input[name="balance"]');
+            if (balanceField) balanceField.value = 0;
+            loadCalendar();
+            setTimeout(hideBookingEditModal, 900);
+          }catch(e){
+            if (bookingEditMessage){ bookingEditMessage.textContent = 'Network error cancelling booking.'; bookingEditMessage.className = 'text-sm text-red-600'; }
+          }
+        });
+      }
+
+      const deleteBookingBtn = document.getElementById('delete-booking-btn');
+      if (deleteBookingBtn){
+        deleteBookingBtn.addEventListener('click', async ()=>{
+          const bookingId = bookingEditForm.querySelector('input[name="booking_id"]').value;
+          if (!bookingId) return;
+          if (!confirm(`Delete booking ${bookingId}? This cannot be undone.`)) return;
+          if (bookingEditMessage){ bookingEditMessage.textContent = 'Deleting...'; bookingEditMessage.className = 'text-sm text-slate-500'; }
+          const username = document.querySelector('input[name="username"]')?.value || '';
+          const password = document.querySelector('input[name="password"]')?.value || '';
+          try{
+            const base = getApiBase();
+            const res = await fetch(base + '/api/bookings/delete', {
+              method: 'POST',
+              headers: { 'Authorization': 'Basic ' + btoa(username + ':' + password), 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ booking_id: bookingId }),
+            });
+            const data = await res.json().catch(()=>({}));
+            if (!res.ok){
+              if (bookingEditMessage){ bookingEditMessage.textContent = data.detail || 'Failed to delete booking.'; bookingEditMessage.className = 'text-sm text-red-600'; }
+              return;
+            }
+            if (bookingEditMessage){ bookingEditMessage.textContent = 'Booking deleted.'; bookingEditMessage.className = 'text-sm text-emerald-600'; }
+            delete bookingsById[bookingId];
+            loadCalendar();
+            setTimeout(hideBookingEditModal, 700);
+          }catch(e){
+            if (bookingEditMessage){ bookingEditMessage.textContent = 'Network error deleting booking.'; bookingEditMessage.className = 'text-sm text-red-600'; }
           }
         });
       }
@@ -568,10 +662,12 @@
             td.classList.add('booked-cell');
             const b = document.createElement('div'); b.className='booked-badge'; b.textContent= dayEvents.length>1? 'Booked ('+dayEvents.length+')':'Booked'; td.appendChild(b);
 
-            // group bookings into fully-paid vs pending, each shown once with its unit IDs below it
+            // group bookings into fully-paid vs cancelled vs pending, each shown once with its unit IDs below it
             const isPaid = ev => String(ev.status||'').trim().toLowerCase() === 'fully paid';
+            const isCancelled = ev => String(ev.status||'').trim().toLowerCase() === 'cancelled';
             const fullyPaidEvents = dayEvents.filter(isPaid);
-            const pendingEvents = dayEvents.filter(ev => !isPaid(ev));
+            const cancelledEvents = dayEvents.filter(isCancelled);
+            const pendingEvents = dayEvents.filter(ev => !isPaid(ev) && !isCancelled(ev));
 
             const makeUnitEl = (ev) => {
               const unitEl = document.createElement('div');
@@ -581,6 +677,13 @@
                 unitEl.style.cursor = 'pointer';
                 unitEl.style.textDecoration = 'underline';
                 unitEl.addEventListener('click', (e)=>{ e.stopPropagation(); openBookingModal(ev.booking_id || ev.id); });
+              }
+              if (Number(ev.parking_fee) > 0){
+                const parkingEl = document.createElement('span');
+                parkingEl.className = 'parking-badge';
+                parkingEl.textContent = 'P';
+                parkingEl.title = 'Parking booked';
+                unitEl.appendChild(parkingEl);
               }
               return unitEl;
             };
@@ -598,10 +701,11 @@
             };
 
             renderStatusGroup(fullyPaidEvents, 'fully-paid-badge', 'Fully Paid');
+            renderStatusGroup(cancelledEvents, 'cancelled-badge', 'Cancelled');
             renderStatusGroup(pendingEvents, 'pending-badge', 'Pending');
 
             // add tooltip/title with details
-            const tooltip = dayEvents.map(ev=> `${ev.booking_id||ev.id||''} ${ev.agent_name||''} ${ev.status?('- '+ev.status):''}`.trim()).join(' | ');
+            const tooltip = dayEvents.map(ev=> `${ev.booking_id||ev.id||''} ${ev.agent_name||''} ${ev.status?('- '+ev.status):''}${Number(ev.parking_fee)>0?' - Parking booked':''}`.trim()).join(' | ');
             td.setAttribute('title', tooltip);
           }
 
@@ -614,6 +718,11 @@
         const footer = document.getElementById('month-footer'); if (footer) footer.textContent = monthFooterLabel(currentDate);
       }
 
+      // Set this to your deployed backend URL (e.g. Render service) when the
+      // frontend is hosted separately, such as on GitHub Pages. Leave blank
+      // ('') to call the API on the same origin the page was loaded from.
+      const REMOTE_API_BASE = '';
+
       // Determine a sensible base URL to call the API from the page.
       function getApiBase(){
         try{
@@ -621,6 +730,11 @@
           // When opened as file:// origin may be 'null' or empty — fall back to localhost server
           if (!origin || origin === 'null' || origin === 'file://'){
             return 'http://127.0.0.1:8000';
+          }
+          // GitHub Pages (and any static-only host) can't run the backend itself —
+          // route API calls to the configured backend instead.
+          if (/\.github\.io$/.test(window.location.hostname) && REMOTE_API_BASE){
+            return REMOTE_API_BASE;
           }
           return origin;
         }catch(e){ return 'http://127.0.0.1:8000'; }
@@ -652,7 +766,7 @@
           const bookings = data.bookings || data || [];
           bookingsById = {};
           bookings.forEach(b=>{ const id = b.booking_id || b.id; if (id) bookingsById[id] = b; });
-          const events = bookings.map(b=>({ id:b.booking_id||b.id, booking_id:b.booking_id||b.id, unit_id:b.unit_id, agent_name: b.agent_name || b.guest_name || '', status: b.status || '', title:`${b.guest_name||b.agent_name||'Booking'} (${b.unit_id})`, start:b.check_in||b.start, end:b.check_out||b.end }));
+          const events = bookings.map(b=>({ id:b.booking_id||b.id, booking_id:b.booking_id||b.id, unit_id:b.unit_id, agent_name: b.agent_name || b.guest_name || '', status: b.status || '', parking_fee: b.parking_fee || 0, title:`${b.guest_name||b.agent_name||'Booking'} (${b.unit_id})`, start:b.check_in||b.start, end:b.check_out||b.end }));
 
           // Update Today's Activity counters based on bookings in the sheet
           try{
@@ -800,6 +914,7 @@
 
           // Login gate — verifies credentials against /api/whoami, then reveals the dashboard.
           const AUTH_STORAGE_KEY = 'lakeview_auth';
+          let currentActorType = null;
           const loginScreen = document.getElementById('login-screen');
           const appShell = document.getElementById('app-shell');
           const loginForm = document.getElementById('login-form');
@@ -808,6 +923,7 @@
           const logoutLink = document.getElementById('logout-link');
 
           function enterApp(username, password, actorName, actorType){
+            currentActorType = actorType;
             const uInput = document.querySelector('input[name="username"]');
             const pInput = document.querySelector('input[name="password"]');
             if (uInput) uInput.value = username;
@@ -1046,16 +1162,79 @@
                 }catch(err){ console.error('payroll summary', err); }
 
                 // render table
+                const isAdminUser = currentActorType === 'admin';
+                let bulkStatusSelect, bulkApplyBtn, selectAllCheckbox;
+                if (isAdminUser){
+                  const bulkBar = document.createElement('div');
+                  bulkBar.className = 'flex items-center gap-2 mb-3';
+                  bulkBar.innerHTML = `
+                    <select id="payroll-bulk-status" class="rounded border p-2 text-sm">
+                      <option value="Sent">Sent</option>
+                      <option value="Pending">Pending</option>
+                    </select>
+                    <button id="payroll-bulk-apply" type="button" disabled class="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:opacity-40">Apply to selected</button>
+                    <span id="payroll-bulk-message" class="text-sm text-slate-500"></span>
+                  `;
+                  container.appendChild(bulkBar);
+                  bulkStatusSelect = bulkBar.querySelector('#payroll-bulk-status');
+                  bulkApplyBtn = bulkBar.querySelector('#payroll-bulk-apply');
+                }
+
                 const table = document.createElement('table'); table.className='w-full text-sm';
-                const thead = document.createElement('thead'); thead.innerHTML = '<tr class="text-left text-slate-600"><th class="p-2">Timestamp</th><th class="p-2">Booking ID</th><th class="p-2">Agent</th><th class="p-2">Commission</th><th class="p-2">Status</th></tr>';
+                const thead = document.createElement('thead');
+                thead.innerHTML = isAdminUser
+                  ? '<tr class="text-left text-slate-600"><th class="p-2"><input type="checkbox" id="payroll-select-all" /></th><th class="p-2">Timestamp</th><th class="p-2">Booking ID</th><th class="p-2">Agent</th><th class="p-2">Commission</th><th class="p-2">Status</th></tr>'
+                  : '<tr class="text-left text-slate-600"><th class="p-2">Timestamp</th><th class="p-2">Booking ID</th><th class="p-2">Agent</th><th class="p-2">Commission</th><th class="p-2">Status</th></tr>';
                 table.appendChild(thead);
                 const tbody = document.createElement('tbody');
                 rows.forEach(r=>{
                   const tr = document.createElement('tr');
-                  tr.innerHTML = `<td class="p-2">${escapeHTML(r.timestamp||r.date||'')}</td><td class="p-2">${escapeHTML(r.booking_id||'')}</td><td class="p-2">${escapeHTML(r.agent_name||'')}</td><td class="p-2">${escapeHTML(r.agent_commission||'')}</td><td class="p-2">${escapeHTML(r.status||'')}</td>`;
+                  const checkboxCell = isAdminUser
+                    ? `<td class="p-2">${r.booking_id ? `<input type="checkbox" class="payroll-row-checkbox" value="${escapeHTML(r.booking_id)}" />` : ''}</td>`
+                    : '';
+                  tr.innerHTML = `${checkboxCell}<td class="p-2">${escapeHTML(r.timestamp||r.date||'')}</td><td class="p-2">${escapeHTML(r.booking_id||'')}</td><td class="p-2">${escapeHTML(r.agent_name||'')}</td><td class="p-2">${escapeHTML(r.agent_commission||'')}</td><td class="p-2">${escapeHTML(r.status||'')}</td>`;
                   tbody.appendChild(tr);
                 });
                 table.appendChild(tbody); container.appendChild(table);
+
+                if (isAdminUser){
+                  selectAllCheckbox = table.querySelector('#payroll-select-all');
+                  const rowCheckboxes = () => Array.from(table.querySelectorAll('.payroll-row-checkbox'));
+                  const refreshApplyState = () => { bulkApplyBtn.disabled = rowCheckboxes().filter(cb=>cb.checked).length === 0; };
+                  if (selectAllCheckbox){
+                    selectAllCheckbox.addEventListener('change', ()=>{
+                      rowCheckboxes().forEach(cb=> cb.checked = selectAllCheckbox.checked);
+                      refreshApplyState();
+                    });
+                  }
+                  rowCheckboxes().forEach(cb=> cb.addEventListener('change', refreshApplyState));
+                  bulkApplyBtn.addEventListener('click', async ()=>{
+                    const selectedIds = rowCheckboxes().filter(cb=>cb.checked).map(cb=>cb.value);
+                    if (!selectedIds.length) return;
+                    const bulkMsg = document.getElementById('payroll-bulk-message');
+                    bulkApplyBtn.disabled = true;
+                    if (bulkMsg) bulkMsg.textContent = 'Updating...';
+                    try{
+                      const body = new URLSearchParams({ booking_ids: selectedIds.join(','), status: bulkStatusSelect.value });
+                      const res = await fetch(base + '/api/agent_payroll/update_status', {
+                        method: 'POST',
+                        headers: { 'Authorization': authHeader, 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: body.toString(),
+                      });
+                      const resData = await res.json().catch(()=>({}));
+                      if (!res.ok){
+                        if (bulkMsg) bulkMsg.textContent = resData.detail || 'Failed to update status.';
+                        bulkApplyBtn.disabled = false;
+                        return;
+                      }
+                      if (bulkMsg) bulkMsg.textContent = `Updated ${resData.updated || 0} row(s).`;
+                      navPayroll.dispatchEvent(new Event('click'));
+                    }catch(e){
+                      if (bulkMsg) bulkMsg.textContent = 'Network error updating status.';
+                      bulkApplyBtn.disabled = false;
+                    }
+                  });
+                }
               }catch(err){ console.error('loadAgentPayroll', err); msg.textContent = 'Error loading payroll: '+(err.message||err); }
             });
           }
@@ -1178,6 +1357,29 @@
               const labels = monthly.map(m=>{ const parts = m.month.split('-'); const d = new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1,1); return d.toLocaleString(undefined,{month:'short',year:'numeric'}); });
               const bookings = monthly.map(m=>m.bookings||0);
               const revenue = monthly.map(m=>Math.round((m.gross_revenue||0)*100)/100);
+              const totalNetIncome = monthly.reduce((sum, m) => sum + (Number(m.owner_net ?? m.net_income ?? 0) || 0), 0);
+              const totalCleaningFees = monthly.reduce((sum, m) => sum + (Number(m.cleaning_fee || 0) || 0), 0);
+
+              function renderMetricCard(parent, label, value, tone='slate'){
+                const card = document.createElement('div');
+                card.className = 'rounded-xl border border-slate-200 bg-white p-4 shadow-sm';
+                const small = document.createElement('div');
+                small.className = 'text-xs font-medium uppercase tracking-wide text-slate-500';
+                small.textContent = label;
+                const num = document.createElement('div');
+                num.className = 'mt-2 text-2xl font-semibold text-slate-900';
+                num.textContent = value;
+                if (tone === 'green') num.style.color = '#15803d';
+                if (tone === 'amber') num.style.color = '#b45309';
+                card.appendChild(small); card.appendChild(num); parent.appendChild(card);
+              }
+
+              const metricRow = document.createElement('div');
+              metricRow.className = 'mb-6 grid gap-4 md:grid-cols-3';
+              renderMetricCard(metricRow, 'Gross Revenue', new Intl.NumberFormat(undefined,{style:'currency',currency:'PHP'}).format(revenue.reduce((sum, v) => sum + v, 0)), 'slate');
+              renderMetricCard(metricRow, 'Net Income', new Intl.NumberFormat(undefined,{style:'currency',currency:'PHP'}).format(totalNetIncome), 'green');
+              renderMetricCard(metricRow, 'Cleaning Fees', new Intl.NumberFormat(undefined,{style:'currency',currency:'PHP'}).format(totalCleaningFees), 'amber');
+              container.appendChild(metricRow);
 
               function renderBarChart(parent, title, labels, values, opts){
                 const box = document.createElement('div'); box.className='mb-6';
@@ -1194,9 +1396,65 @@
                 box.appendChild(chart); parent.appendChild(box);
               }
 
+              function renderSummaryTable(parent, title, rows, columns){
+                if (!rows || !rows.length) return;
+                const box = document.createElement('div'); box.className='mb-6';
+                const h = document.createElement('h4'); h.className='text-sm font-medium text-slate-700 mb-2'; h.textContent = title; box.appendChild(h);
+                const table = document.createElement('table'); table.className='w-full text-sm border border-slate-200'; table.style.borderCollapse='collapse';
+                const thead = document.createElement('thead');
+                thead.innerHTML = '<tr class="bg-slate-100 text-left">' + columns.map(c => `<th class="p-2 border border-slate-200">${escapeHTML(c.label)}</th>`).join('') + '</tr>';
+                table.appendChild(thead);
+                const tbody = document.createElement('tbody');
+                rows.forEach(row => {
+                  const tr = document.createElement('tr');
+                  tr.innerHTML = columns.map(c => {
+                    const value = row[c.key];
+                    let display;
+                    if (typeof value === 'number') display = new Intl.NumberFormat(undefined,{style:'currency',currency:'PHP',maximumFractionDigits:2}).format(value);
+                    else display = (value === null || value === undefined || value === '') ? '—' : escapeHTML(String(value));
+                    const cls = c.key === 'owner_net' ? 'p-2 border border-slate-200 font-semibold bg-emerald-50 text-emerald-800' : 'p-2 border border-slate-200';
+                    return `<td class="${cls}">${display}</td>`;
+                  }).join('');
+                  tbody.appendChild(tr);
+                });
+                table.appendChild(tbody); box.appendChild(table); parent.appendChild(box);
+              }
+
               // render two charts: bookings and revenue
               renderBarChart(container, 'Bookings per Month', labels, bookings, { color: '#0ea5a4', formatValue: v=>String(v) });
               renderBarChart(container, 'Gross Revenue per Month', labels, revenue, { color: '#2563eb', formatValue: v=>new Intl.NumberFormat(undefined,{style:'currency',currency:'PHP'}).format(v) });
+
+              const perUnitRows = analytics.per_unit || [];
+              renderSummaryTable(container, 'Gross and Net per Unit', perUnitRows, [
+                { key: 'unit_id', label: 'Unit' },
+                { key: 'bookings', label: 'Bookings' },
+                { key: 'gross_revenue', label: 'Gross' },
+                { key: 'owner_net', label: 'Net' },
+              ]);
+
+              const receivableRows = analytics.receivables || [];
+              renderSummaryTable(container, 'Receivables by Caretaker', receivableRows, [
+                { key: 'caretaker', label: 'Caretaker' },
+                { key: 'bookings', label: 'Bookings' },
+                { key: 'cash_collected', label: 'Cash Collected' },
+                { key: 'cleaning_fee_owed', label: 'Cleaning Fee Owed' },
+                { key: 'total_receivable', label: 'Net Receivable' },
+              ]);
+
+              const bookingRows = analytics.bookings || [];
+              renderSummaryTable(container, 'Booking Computation Details', bookingRows, [
+                { key: 'booking_id', label: 'Booking ID' },
+                { key: 'unit_id', label: 'Unit' },
+                { key: 'check_in', label: 'Check-in' },
+                { key: 'gross_revenue', label: 'Gross' },
+                { key: 'cleaning_fee', label: '- Cleaning Fee' },
+                { key: 'agent_commission', label: '- Agent Commission' },
+                { key: 'reservation_fee', label: 'Reservation Fee' },
+                { key: 'payment_method', label: 'Reservation Paid Via' },
+                { key: 'paid_balance', label: 'Balance Paid' },
+                { key: 'balance_payment_method', label: 'Balance Paid Via' },
+                { key: 'owner_net', label: '= Net' },
+              ]);
 
             }catch(err){ console.error('loadAnalytics', err); msg.textContent = 'Error loading analytics: '+(err.message||err); }
           });

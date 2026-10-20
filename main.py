@@ -18,9 +18,11 @@ from services.calculator import process_booking
 from services.sheets_engine import append_booking
 from services.sheets_engine import get_all_bookings
 from services.sheets_engine import get_agent_payroll
+from services.sheets_engine import update_agent_payroll_status
 from services.sheets_engine import get_caretaker_ledger
 from services.sheets_engine import get_analytics
 from services.sheets_engine import update_booking
+from services.sheets_engine import delete_booking, cancel_booking
 import json
 from typing import Optional
 
@@ -34,8 +36,26 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ALLOWED_UNITS = {"635", "1931", "1127", "1228", "1230"}
-ALLOWED_PAYMENT_METHODS = {"Cash", "GCash", "Bank Transfer", "PayMaya", "Other"}
-ALLOWED_BALANCE_PAYMENT_METHODS = {"GCash", "Bank", "Czarina", "Tess"}
+ALLOWED_PAYMENT_METHODS = {"Cash", "GCash", "BDO", "Bank Transfer", "PayMaya", "Ate Czarina", "Ate Tess", "Other"}
+ALLOWED_BALANCE_PAYMENT_METHODS = {"GCash", "BDO", "Ate Czarina", "Ate Tess"}
+
+
+def _normalize_payment_name(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    mapping = {
+        "czarina": "Ate Czarina",
+        "ate czarina": "Ate Czarina",
+        "tess": "Ate Tess",
+        "ate tess": "Ate Tess",
+        "bdo": "BDO",
+        "gcash": "GCash",
+        "cash": "Cash",
+        "bank": "Bank",
+        "bank transfer": "Bank Transfer",
+    }
+    return mapping.get(text.lower(), text)
 
 # Add CORS middleware to allow browser requests from localhost/127.0.0.1 during development
 app.add_middleware(
@@ -165,7 +185,7 @@ def validate_booking_input(data: dict) -> dict:
     if reservation_fee < 0:
         raise ValueError("reservation_fee must be non-negative")
 
-    payment_method = str(data.get("payment_method", "")).strip()
+    payment_method = _normalize_payment_name(data.get("payment_method", ""))
     if payment_method and payment_method not in ALLOWED_PAYMENT_METHODS:
         raise ValueError(f"payment_method must be one of {sorted(ALLOWED_PAYMENT_METHODS)}")
 
@@ -256,6 +276,31 @@ def change_password(
     return JSONResponse(status_code=200, content={"message": "Password updated"}, headers={"Access-Control-Allow-Origin": "*"})
 
 
+PAYROLL_STATUSES = {"Pending", "Sent"}
+
+
+@app.post("/api/agent_payroll/update_status")
+def agent_payroll_update_status(
+    booking_ids: str = Form(...),
+    status: str = Form(...),
+    actor: dict = Depends(get_actor),
+):
+    if actor.get('type') != 'admin':
+        raise HTTPException(status_code=403, detail="forbidden: admin only")
+    status = status.strip()
+    if status not in PAYROLL_STATUSES:
+        raise HTTPException(status_code=400, detail=f"status must be one of {sorted(PAYROLL_STATUSES)}")
+    ids = [b.strip() for b in booking_ids.split(",") if b.strip()]
+    if not ids:
+        raise HTTPException(status_code=400, detail="booking_ids is required")
+    try:
+        updated = update_agent_payroll_status(ids, status)
+        return JSONResponse(status_code=200, content={"updated": updated}, headers={"Access-Control-Allow-Origin": "*"})
+    except Exception:
+        logger.exception('agent_payroll_update_status failed')
+        raise HTTPException(status_code=500, detail="internal server error")
+
+
 @app.get("/api/agent_payroll")
 def agent_payroll(actor: dict = Depends(get_actor)):
     # admin sees everyone; a booking agent may only see rows matching their own name
@@ -316,13 +361,13 @@ def _build_booking_result(validated_data: dict) -> dict:
 
 
 def _maybe_mark_fully_paid(booking_result: dict) -> None:
-    """Force status to 'Fully Paid' once the remaining balance reaches zero (or less)."""
+    """Keep status in sync with the remaining balance: 'Fully Paid' once it reaches zero,
+    reverted back to 'Pending' if a correction (e.g. paid_balance set back to 0) reopens a balance."""
     try:
         balance_value = float(booking_result.get("balance") or 0)
     except (TypeError, ValueError):
         return
-    if balance_value <= 0:
-        booking_result["status"] = "Fully Paid"
+    booking_result["status"] = "Fully Paid" if balance_value <= 0 else "Pending"
 
 
 @app.post("/api/bookings/create")
@@ -398,7 +443,7 @@ def update_booking_endpoint(
     booking_id = booking_id.strip()
     if not booking_id:
         raise HTTPException(status_code=400, detail="booking_id is required")
-    balance_payment_method = (balance_payment_method or "").strip()
+    balance_payment_method = _normalize_payment_name(balance_payment_method or "")
     if balance_payment_method and balance_payment_method not in ALLOWED_BALANCE_PAYMENT_METHODS:
         raise HTTPException(
             status_code=400,
@@ -429,9 +474,12 @@ def update_booking_endpoint(
         booking_result["booking_id"] = booking_id
         booking_result["balance_payment_method"] = balance_payment_method
         booking_result["paid_balance"] = paid_balance if paid_balance is not None else 0
-        # once the paid balance covers the remaining balance, clear the balance to zero
-        if paid_balance is not None and paid_balance >= booking_result["balance"]:
-            booking_result["balance"] = 0
+        # Recompute the outstanding balance from scratch (gross - reservation - paid so far)
+        # instead of trusting the submitted/stale "balance" field, so that correcting
+        # paid_balance back down (e.g. a mistaken "fully paid") reopens the balance again.
+        if paid_balance is not None:
+            remaining = booking_result["gross_revenue"] - validated_data["reservation_fee"] - paid_balance
+            booking_result["balance"] = max(remaining, 0)
         # status is no longer edited from this form; preserve whatever is already on the sheet
         if status and status.strip():
             booking_result["status"] = status.strip()[:100]
@@ -452,4 +500,52 @@ def update_booking_endpoint(
     except Exception as exc:
         logger.exception('update_booking failed')
         raise HTTPException(status_code=400, detail="Booking could not be updated") from exc
+
+
+@app.post("/api/bookings/delete")
+def delete_booking_endpoint(
+    booking_id: str = Form(...),
+    actor: dict = Depends(get_actor),
+):
+    booking_id = booking_id.strip()
+    if not booking_id:
+        raise HTTPException(status_code=400, detail="booking_id is required")
+    try:
+        deleted = delete_booking(booking_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Booking not found")
+        return JSONResponse(
+            status_code=200,
+            content={"message": "Booking deleted successfully"},
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception('delete_booking failed')
+        raise HTTPException(status_code=500, detail="internal server error")
+
+
+@app.post("/api/bookings/cancel")
+def cancel_booking_endpoint(
+    booking_id: str = Form(...),
+    actor: dict = Depends(get_actor),
+):
+    booking_id = booking_id.strip()
+    if not booking_id:
+        raise HTTPException(status_code=400, detail="booking_id is required")
+    try:
+        cancelled = cancel_booking(booking_id)
+        if not cancelled:
+            raise HTTPException(status_code=404, detail="Booking not found")
+        return JSONResponse(
+            status_code=200,
+            content={"message": "Booking cancelled. Reservation fee is retained (non-refundable)."},
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception('cancel_booking failed')
+        raise HTTPException(status_code=500, detail="internal server error")
 

@@ -11,8 +11,15 @@ def process_booking(data: dict) -> dict:
 
     nights = (check_out - check_in).days
 
+    amount = float(data["amount"])
+    parking_fee = float(data["parking_fee"])
+
     agent_name = data.get("agent_name")
-    agent_commission = 300 * nights if agent_name else 0.0
+    agent_commission = 0.0
+    if agent_name:
+        agent_commission += 100.0
+        if parking_fee > 0:
+            agent_commission += 50.0
 
     if unit_id in {"635", "1931"}:
         caretaker = "Ate Czarina"
@@ -20,9 +27,6 @@ def process_booking(data: dict) -> dict:
     else:
         caretaker = "Ate Tess"
         cleaning_fee = 700.0
-
-    amount = float(data["amount"])
-    parking_fee = float(data["parking_fee"])
 
     owner_net_profit = (amount + parking_fee) - agent_commission - cleaning_fee
 
