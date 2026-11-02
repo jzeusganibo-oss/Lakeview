@@ -1159,14 +1159,18 @@
                 let rowsInPeriod = rows;
                 try{
                   const now = new Date();
-                  // build month selector (last 12 months)
+                  // build month selector (past 12 months + next 6 succeeding months, since agents
+                  // book in advance and their commission for those months is already confirmed)
                   const monthSelectId = 'payroll-month-select';
                   let monthSelect = document.getElementById(monthSelectId);
                   if (!monthSelect){
                     monthSelect = document.createElement('select'); monthSelect.id = monthSelectId; monthSelect.className='mt-2 rounded border p-2';
                     const months = [];
+                    for (let i=5;i>=1;i--){ months.push(new Date(now.getFullYear(), now.getMonth()+i, 1)); }
                     for (let i=0;i<12;i++){ const d = new Date(now.getFullYear(), now.getMonth()-i, 1); months.push(d); }
-                    months.forEach(d=>{ const v = `${d.getFullYear()}-${pad(d.getMonth()+1)}`; const label = `${d.toLocaleString('default',{month:'long'})} ${d.getFullYear()}`; const o = document.createElement('option'); o.value = v; o.textContent = label; monthSelect.appendChild(o); });
+                    months.forEach(d=>{ const v = `${d.getFullYear()}-${pad(d.getMonth()+1)}`; const isFuture = d > now; const label = `${d.toLocaleString('default',{month:'long'})} ${d.getFullYear()}${isFuture ? ' (Projected)' : ''}`; const o = document.createElement('option'); o.value = v; o.textContent = label; monthSelect.appendChild(o); });
+                    // default to the current month, not the earliest (projected) option
+                    monthSelect.value = `${now.getFullYear()}-${pad(now.getMonth()+1)}`;
                     // insert monthSelect before container
                     container.parentNode.insertBefore(monthSelect, container);
                   }
@@ -1707,6 +1711,15 @@
                 { key: 'cash_collected', label: 'Cash Collected' },
                 { key: 'cleaning_fee_owed', label: 'Cleaning Fee Owed' },
                 { key: 'total_receivable', label: 'Net Receivable' },
+              ]);
+
+              // includes already-confirmed advance bookings, so succeeding/future months show predicted commission, not just commission already earned
+              const agentCommissionRows = (analytics.agent_commission || []).map(r => ({ ...r, month: formatMonthLabel(r.month) }));
+              renderSummaryTable(container, 'Agent Commission by Month (includes upcoming advance bookings)', agentCommissionRows, [
+                { key: 'month', label: 'Month' },
+                { key: 'agent_name', label: 'Agent' },
+                { key: 'bookings', label: 'Bookings' },
+                { key: 'agent_commission', label: 'Commission' },
               ]);
 
               const bookingRows = analytics.bookings || [];

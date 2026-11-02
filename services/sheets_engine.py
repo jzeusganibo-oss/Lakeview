@@ -777,6 +777,10 @@ def _write_dashboard_tab(spreadsheet, summary: dict) -> None:
     for r in summary.get("receivables", []):
         rows.append([r.get("month", ""), r["caretaker"], r["bookings"], r["cash_collected"], r["cleaning_fee_owed"], r["total_receivable"]])
 
+    rows += [[], ["Agent Commission by Month (includes upcoming advance bookings)"], ["Month", "Agent", "Bookings", "Commission"]]
+    for a in summary.get("agent_commission", []):
+        rows.append([a.get("month", ""), a["agent_name"], a["bookings"], a["agent_commission"]])
+
     try:
         ws.clear()
         ws.update("A1", rows, value_input_option="USER_ENTERED")
@@ -821,6 +825,7 @@ def build_analytics_summary(records: list[dict]) -> dict:
     monthly = {}
     per_unit = {}
     receivables = {}
+    agent_commission_summary = {}
     bookings_detail = []
 
     for row in records:
@@ -857,6 +862,12 @@ def build_analytics_summary(records: list[dict]) -> dict:
             agent_commission = _to_float(row.get("agent_commission", 0))
             cleaning_fee = _to_float(row.get("cleaning_fee", 0))
         owner_net = gross - agent_commission - cleaning_fee
+
+        # Agents book units in advance, so unlike agent_commission above (which only
+        # "counts" once the guest has checked out), this predicted figure includes
+        # already-confirmed upcoming stays too — it lets payroll be forecasted for
+        # succeeding months instead of only showing commission already earned.
+        predicted_agent_commission = 0.0 if status == "cancelled" else _to_float(row.get("agent_commission", 0))
 
         unit_id = str(row.get("unit_id") or "Unknown").strip() or "Unknown"
         caretaker = normalize_caretaker_name(row.get("caretaker"))
@@ -917,6 +928,18 @@ def build_analytics_summary(records: list[dict]) -> dict:
         # net of the cleaning fee owed to her (mirrors the xlsx Q column: N + O + P).
         receivables[(key, caretaker)]["total_receivable"] += cash_collected - cleaning_fee
 
+        # Admin-made bookings aren't an agent's commission (mirrors the Agent Payroll sheet rule).
+        agent_name = str(row.get("agent_name") or "").strip()
+        if agent_name and agent_name.lower() != "admin":
+            agent_commission_summary.setdefault((key, agent_name), {
+                "month": key,
+                "agent_name": agent_name,
+                "bookings": 0,
+                "agent_commission": 0.0,
+            })
+            agent_commission_summary[(key, agent_name)]["bookings"] += 1
+            agent_commission_summary[(key, agent_name)]["agent_commission"] += predicted_agent_commission
+
         bookings_detail.append({
             "booking_id": row.get("booking_id", ""),
             "unit_id": unit_id,
@@ -939,11 +962,16 @@ def build_analytics_summary(records: list[dict]) -> dict:
     per_unit_sorted = sorted(per_unit_sorted, key=lambda x: x["month"], reverse=True)
     receivables_sorted = sorted(receivables.values(), key=lambda x: x["caretaker"])
     receivables_sorted = sorted(receivables_sorted, key=lambda x: x["month"], reverse=True)
+    # ascending by month (oldest -> newest/upcoming) so succeeding months' predicted
+    # payroll reads naturally as a forecast, grouped by agent within each month.
+    agent_commission_sorted = sorted(agent_commission_summary.values(), key=lambda x: x["agent_name"])
+    agent_commission_sorted = sorted(agent_commission_sorted, key=lambda x: x["month"])
 
     return {
         "monthly": sorted(monthly.values(), key=lambda x: x["month"]),
         "per_unit": per_unit_sorted,
         "receivables": receivables_sorted,
+        "agent_commission": agent_commission_sorted,
         "bookings": sorted(bookings_detail, key=lambda x: str(x["check_in"]), reverse=True),
     }
 
@@ -1022,6 +1050,7 @@ def get_analytics(last_n_months: int = 12) -> dict:
         "monthly": months_list,
         "per_unit": summary["per_unit"],
         "receivables": summary["receivables"],
+        "agent_commission": summary["agent_commission"],
         "bookings": summary["bookings"],
         "history": history,
     }
