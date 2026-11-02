@@ -1606,6 +1606,9 @@
                 const d = new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1, 1);
                 return d.toLocaleString(undefined,{month:'short',year:'numeric'});
               }
+              // default month filter for all sub-tables below: today's real-world month, falling back to the most recent available month
+              const now = new Date();
+              const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
               // build labels and datasets
               const labels = monthly.map(m=>{ const parts = m.month.split('-'); const d = new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1,1); return d.toLocaleString(undefined,{month:'short',year:'numeric'}); });
               const bookings = monthly.map(m=>m.bookings||0);
@@ -1716,7 +1719,9 @@
               function renderMonthFilterableTable(stateKey, title, rawRows, columns){
                 const rows = (rawRows || []).map(r => ({ ...r, month: formatMonthLabel(r.month) }));
                 const monthKeys = Array.from(new Set((rawRows || []).map(r => r.month).filter(Boolean))).sort().reverse();
-                if (!monthKeys.includes(monthFilterState[stateKey])) monthFilterState[stateKey] = monthKeys[0] || '';
+                if (!monthKeys.includes(monthFilterState[stateKey])){
+                  monthFilterState[stateKey] = monthKeys.includes(currentMonthKey) ? currentMonthKey : (monthKeys[0] || '');
+                }
 
                 const box = document.createElement('div'); box.className = 'mb-6';
                 const header = document.createElement('div'); header.className = 'mb-2 flex items-center gap-2';
@@ -1753,7 +1758,7 @@
                 const monthKeys = Array.from(new Set(rows.map(r => r._monthKey).filter(Boolean))).sort().reverse();
                 const prevSelection = monthFilterState[stateKey];
                 if (!Array.isArray(prevSelection) || !prevSelection.every(k => monthKeys.includes(k))){
-                  monthFilterState[stateKey] = monthKeys.slice();
+                  monthFilterState[stateKey] = monthKeys.includes(currentMonthKey) ? [currentMonthKey] : (monthKeys[0] ? [monthKeys[0]] : []);
                 }
 
                 const unitStateKey = stateKey + 'Unit';
