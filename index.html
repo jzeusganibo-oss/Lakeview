@@ -1745,7 +1745,9 @@
 
               // Lets the user tick any combination of months (defaults to all selected)
               // and shows a totals line below the table for the checked months combined.
-              function renderMultiMonthFilterableTable(stateKey, title, rawRows, columns, totalKeys){
+              // opts.unitKey (optional) adds a second collapsible checkbox filter by that row field (e.g. 'unit_id').
+              function renderMultiMonthFilterableTable(stateKey, title, rawRows, columns, totalKeys, opts){
+                const unitKey = opts && opts.unitKey;
                 const getMonthKey = r => r.month || (r.check_in ? String(r.check_in).slice(0, 7) : '');
                 const rows = (rawRows || []).map(r => ({ ...r, _monthKey: getMonthKey(r) }));
                 const monthKeys = Array.from(new Set(rows.map(r => r._monthKey).filter(Boolean))).sort().reverse();
@@ -1754,11 +1756,23 @@
                   monthFilterState[stateKey] = monthKeys.slice();
                 }
 
+                const unitStateKey = stateKey + 'Unit';
+                const unitKeys = unitKey ? Array.from(new Set(rows.map(r => r[unitKey]).filter(Boolean))).sort() : [];
+                if (unitKey){
+                  const prevUnitSelection = monthFilterState[unitStateKey];
+                  if (!Array.isArray(prevUnitSelection) || !prevUnitSelection.every(k => unitKeys.includes(k))){
+                    monthFilterState[unitStateKey] = unitKeys.slice();
+                  }
+                }
+
                 const box = document.createElement('div'); box.className = 'mb-6';
                 const titleEl = document.createElement('h4'); titleEl.className = 'text-sm font-medium text-slate-700 mb-2'; titleEl.textContent = title;
                 box.appendChild(titleEl);
 
-                const monthDetails = document.createElement('details'); monthDetails.className = 'mb-2 inline-block rounded border border-slate-200 bg-slate-50 px-2 py-1 text-sm';
+                const filterRow = document.createElement('div'); filterRow.className = 'flex flex-wrap items-start gap-2 mb-2';
+                box.appendChild(filterRow);
+
+                const monthDetails = document.createElement('details'); monthDetails.className = 'inline-block rounded border border-slate-200 bg-slate-50 px-2 py-1 text-sm';
                 const monthSummary = document.createElement('summary'); monthSummary.className = 'cursor-pointer select-none font-medium text-slate-700';
                 monthDetails.appendChild(monthSummary);
                 const checkRow = document.createElement('div'); checkRow.className = 'flex flex-wrap items-center gap-3 mt-2 pt-2 border-t border-slate-200';
@@ -1777,13 +1791,43 @@
                 });
                 allCheckbox.checked = monthKeys.length > 0 && monthFilterState[stateKey].length === monthKeys.length;
                 monthDetails.appendChild(checkRow);
-                box.appendChild(monthDetails);
+                filterRow.appendChild(monthDetails);
 
                 function updateSummaryLabel(){
                   const n = monthFilterState[stateKey].length;
                   monthSummary.textContent = n === monthKeys.length ? `Months: All (${n})` : `Months: ${n} selected`;
                 }
                 updateSummaryLabel();
+
+                let unitDetails, unitSummary, unitAllCheckbox, unitCheckboxes = [];
+                function updateUnitSummaryLabel(){
+                  if (!unitKey) return;
+                  const n = monthFilterState[unitStateKey].length;
+                  unitSummary.textContent = n === unitKeys.length ? `Units: All (${n})` : `Units: ${n} selected`;
+                }
+                if (unitKey){
+                  unitDetails = document.createElement('details'); unitDetails.className = 'inline-block rounded border border-slate-200 bg-slate-50 px-2 py-1 text-sm';
+                  unitSummary = document.createElement('summary'); unitSummary.className = 'cursor-pointer select-none font-medium text-slate-700';
+                  unitDetails.appendChild(unitSummary);
+                  const unitCheckRow = document.createElement('div'); unitCheckRow.className = 'flex flex-wrap items-center gap-3 mt-2 pt-2 border-t border-slate-200';
+                  const unitAllLabel = document.createElement('label'); unitAllLabel.className = 'flex items-center gap-1 font-medium';
+                  unitAllCheckbox = document.createElement('input'); unitAllCheckbox.type = 'checkbox';
+                  unitAllLabel.appendChild(unitAllCheckbox); unitAllLabel.appendChild(document.createTextNode('All'));
+                  unitCheckRow.appendChild(unitAllLabel);
+
+                  unitCheckboxes = unitKeys.map(key => {
+                    const label = document.createElement('label'); label.className = 'flex items-center gap-1';
+                    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = key;
+                    cb.checked = monthFilterState[unitStateKey].includes(key);
+                    label.appendChild(cb); label.appendChild(document.createTextNode(key));
+                    unitCheckRow.appendChild(label);
+                    return cb;
+                  });
+                  unitAllCheckbox.checked = unitKeys.length > 0 && monthFilterState[unitStateKey].length === unitKeys.length;
+                  unitDetails.appendChild(unitCheckRow);
+                  filterRow.appendChild(unitDetails);
+                  updateUnitSummaryLabel();
+                }
 
                 const tableContainer = document.createElement('div');
                 const totalsBox = document.createElement('div'); totalsBox.className = 'mt-2 text-sm font-medium text-slate-700';
@@ -1796,9 +1840,13 @@
                 function render(){
                   tableContainer.innerHTML = '';
                   totalsBox.innerHTML = '';
-                  const selected = monthFilterState[stateKey];
-                  const filtered = rows.filter(r => selected.includes(r._monthKey)).map(r => ({ ...r, month: formatMonthLabel(r._monthKey) }));
-                  if (!filtered.length){ tableContainer.innerHTML = '<div class="text-sm text-slate-500">No data for the selected months.</div>'; return; }
+                  const selectedMonths = monthFilterState[stateKey];
+                  const selectedUnits = unitKey ? monthFilterState[unitStateKey] : null;
+                  const filtered = rows
+                    .filter(r => selectedMonths.includes(r._monthKey))
+                    .filter(r => !selectedUnits || selectedUnits.includes(r[unitKey]))
+                    .map(r => ({ ...r, month: formatMonthLabel(r._monthKey) }));
+                  if (!filtered.length){ tableContainer.innerHTML = '<div class="text-sm text-slate-500">No data for the selected filters.</div>'; return; }
                   renderSummaryTable(tableContainer, '', filtered, columns);
                   if (totalKeys && totalKeys.length){
                     const parts = totalKeys.map(key => {
@@ -1806,7 +1854,7 @@
                       const col = columns.find(c => c.key === key);
                       return `${col ? col.label : key}: ${formatCurrency(sum)}`;
                     });
-                    totalsBox.textContent = `Totals for selected months (${filtered.length} row${filtered.length === 1 ? '' : 's'}): ${parts.join(' \u00b7 ')}`;
+                    totalsBox.textContent = `Totals for selected filters (${filtered.length} row${filtered.length === 1 ? '' : 's'}): ${parts.join(' \u00b7 ')}`;
                   }
                 }
 
@@ -1827,6 +1875,25 @@
                     render();
                   });
                 });
+                if (unitKey){
+                  unitAllCheckbox.addEventListener('change', ()=>{
+                    monthFilterState[unitStateKey] = unitAllCheckbox.checked ? unitKeys.slice() : [];
+                    unitCheckboxes.forEach(cb => { cb.checked = unitAllCheckbox.checked; });
+                    updateUnitSummaryLabel();
+                    render();
+                  });
+                  unitCheckboxes.forEach(cb => {
+                    cb.addEventListener('change', ()=>{
+                      const key = cb.value;
+                      const sel = monthFilterState[unitStateKey];
+                      if (cb.checked){ if (!sel.includes(key)) sel.push(key); }
+                      else { monthFilterState[unitStateKey] = sel.filter(k => k !== key); }
+                      unitAllCheckbox.checked = monthFilterState[unitStateKey].length === unitKeys.length;
+                      updateUnitSummaryLabel();
+                      render();
+                    });
+                  });
+                }
                 render();
               }
 
@@ -1867,7 +1934,7 @@
                 { key: 'paid_balance', label: 'Balance Paid' },
                 { key: 'balance_payment_method', label: 'Balance Paid Via' },
                 { key: 'owner_net', label: '= Net' },
-              ], ['gross_revenue', 'cleaning_fee', 'agent_commission', 'reservation_fee', 'paid_balance', 'owner_net']);
+              ], ['gross_revenue', 'cleaning_fee', 'agent_commission', 'reservation_fee', 'paid_balance', 'owner_net'], { unitKey: 'unit_id' });
 
             }catch(err){
               console.error('loadAnalytics', err);
