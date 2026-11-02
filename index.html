@@ -1758,7 +1758,10 @@
                 const titleEl = document.createElement('h4'); titleEl.className = 'text-sm font-medium text-slate-700 mb-2'; titleEl.textContent = title;
                 box.appendChild(titleEl);
 
-                const checkRow = document.createElement('div'); checkRow.className = 'flex flex-wrap items-center gap-3 mb-2 text-sm';
+                const monthDetails = document.createElement('details'); monthDetails.className = 'mb-2 inline-block rounded border border-slate-200 bg-slate-50 px-2 py-1 text-sm';
+                const monthSummary = document.createElement('summary'); monthSummary.className = 'cursor-pointer select-none font-medium text-slate-700';
+                monthDetails.appendChild(monthSummary);
+                const checkRow = document.createElement('div'); checkRow.className = 'flex flex-wrap items-center gap-3 mt-2 pt-2 border-t border-slate-200';
                 const allLabel = document.createElement('label'); allLabel.className = 'flex items-center gap-1 font-medium';
                 const allCheckbox = document.createElement('input'); allCheckbox.type = 'checkbox';
                 allLabel.appendChild(allCheckbox); allLabel.appendChild(document.createTextNode('All'));
@@ -1773,7 +1776,14 @@
                   return cb;
                 });
                 allCheckbox.checked = monthKeys.length > 0 && monthFilterState[stateKey].length === monthKeys.length;
-                box.appendChild(checkRow);
+                monthDetails.appendChild(checkRow);
+                box.appendChild(monthDetails);
+
+                function updateSummaryLabel(){
+                  const n = monthFilterState[stateKey].length;
+                  monthSummary.textContent = n === monthKeys.length ? `Months: All (${n})` : `Months: ${n} selected`;
+                }
+                updateSummaryLabel();
 
                 const tableContainer = document.createElement('div');
                 const totalsBox = document.createElement('div'); totalsBox.className = 'mt-2 text-sm font-medium text-slate-700';
@@ -1803,6 +1813,7 @@
                 allCheckbox.addEventListener('change', ()=>{
                   monthFilterState[stateKey] = allCheckbox.checked ? monthKeys.slice() : [];
                   monthCheckboxes.forEach(cb => { cb.checked = allCheckbox.checked; });
+                  updateSummaryLabel();
                   render();
                 });
                 monthCheckboxes.forEach(cb => {
@@ -1812,6 +1823,7 @@
                     if (cb.checked){ if (!sel.includes(key)) sel.push(key); }
                     else { monthFilterState[stateKey] = sel.filter(k => k !== key); }
                     allCheckbox.checked = monthFilterState[stateKey].length === monthKeys.length;
+                    updateSummaryLabel();
                     render();
                   });
                 });
