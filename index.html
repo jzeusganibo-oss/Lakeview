@@ -800,6 +800,8 @@
       // Admin credentials are cached after the first prompt so the 20s panel
       // auto-refresh doesn't re-prompt the user over and over; cleared on 401.
       let cachedAdminAuth = '';
+      // Persists the Gross/Net per Unit month filter across the analytics panel's auto-refresh.
+      let selectedPerUnitMonth = '';
       function getAdminAuthHeader(promptLabel){
         const username = document.querySelector('input[name="username"]')?.value || '';
         const password = document.querySelector('input[name="password"]')?.value || '';
@@ -1685,7 +1687,7 @@
               function renderSummaryTable(parent, title, rows, columns){
                 if (!rows || !rows.length) return;
                 const box = document.createElement('div'); box.className='mb-6';
-                const h = document.createElement('h4'); h.className='text-sm font-medium text-slate-700 mb-2'; h.textContent = title; box.appendChild(h);
+                if (title){ const h = document.createElement('h4'); h.className='text-sm font-medium text-slate-700 mb-2'; h.textContent = title; box.appendChild(h); }
                 const table = document.createElement('table'); table.className='w-full text-sm border border-slate-200'; table.style.borderCollapse='collapse';
                 const thead = document.createElement('thead');
                 thead.innerHTML = '<tr class="bg-slate-100 text-left">' + columns.map(c => `<th class="p-2 border border-slate-200">${escapeHTML(c.label)}</th>`).join('') + '</tr>';
@@ -1712,13 +1714,38 @@
               renderBarChart(container, 'Net Income per Month', labels, netIncome, netIncomePrev, { color: '#15803d', formatValue: v=>new Intl.NumberFormat(undefined,{style:'currency',currency:'PHP'}).format(v) });
 
               const perUnitRows = (analytics.per_unit || []).map(r => ({ ...r, month: formatMonthLabel(r.month) }));
-              renderSummaryTable(container, 'Gross and Net per Unit', perUnitRows, [
-                { key: 'month', label: 'Month' },
-                { key: 'unit_id', label: 'Unit' },
-                { key: 'bookings', label: 'Bookings' },
-                { key: 'gross_revenue', label: 'Gross' },
-                { key: 'owner_net', label: 'Net' },
-              ]);
+              const perUnitMonthKeys = Array.from(new Set((analytics.per_unit || []).map(r => r.month).filter(Boolean))).sort().reverse();
+              if (!perUnitMonthKeys.includes(selectedPerUnitMonth)) selectedPerUnitMonth = perUnitMonthKeys[0] || '';
+
+              const perUnitBox = document.createElement('div'); perUnitBox.className = 'mb-6';
+              const perUnitHeader = document.createElement('div'); perUnitHeader.className = 'mb-2 flex items-center gap-2';
+              const perUnitTitle = document.createElement('h4'); perUnitTitle.className = 'text-sm font-medium text-slate-700'; perUnitTitle.textContent = 'Gross and Net per Unit';
+              const perUnitMonthSelect = document.createElement('select'); perUnitMonthSelect.className = 'rounded border p-1 text-sm';
+              perUnitMonthKeys.forEach(key => {
+                const o = document.createElement('option'); o.value = key; o.textContent = formatMonthLabel(key);
+                if (key === selectedPerUnitMonth) o.selected = true;
+                perUnitMonthSelect.appendChild(o);
+              });
+              perUnitHeader.appendChild(perUnitTitle); perUnitHeader.appendChild(perUnitMonthSelect);
+              perUnitBox.appendChild(perUnitHeader);
+              const perUnitTableContainer = document.createElement('div');
+              perUnitBox.appendChild(perUnitTableContainer);
+              container.appendChild(perUnitBox);
+
+              function renderPerUnitTable(){
+                perUnitTableContainer.innerHTML = '';
+                const rows = perUnitRows.filter(r => !selectedPerUnitMonth || r.month === formatMonthLabel(selectedPerUnitMonth));
+                if (!rows.length){ perUnitTableContainer.innerHTML = '<div class="text-sm text-slate-500">No data for this month.</div>'; return; }
+                renderSummaryTable(perUnitTableContainer, '', rows, [
+                  { key: 'month', label: 'Month' },
+                  { key: 'unit_id', label: 'Unit' },
+                  { key: 'bookings', label: 'Bookings' },
+                  { key: 'gross_revenue', label: 'Gross' },
+                  { key: 'owner_net', label: 'Net' },
+                ]);
+              }
+              perUnitMonthSelect.addEventListener('change', ()=>{ selectedPerUnitMonth = perUnitMonthSelect.value; renderPerUnitTable(); });
+              renderPerUnitTable();
 
               const receivableRows = (analytics.receivables || []).map(r => ({ ...r, month: formatMonthLabel(r.month) }));
               renderSummaryTable(container, 'Receivables by Caretaker', receivableRows, [
