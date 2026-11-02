@@ -429,6 +429,7 @@
       let currentDate = new Date();
       let selectedUnit = '';
       let bookingsById = {};
+      let calendarLoadedOnce = false;
 
       // Balance is auto-computed from amount/parking/reservation fees, but the
       // agent can still overwrite it manually — once edited, stop auto-updating it.
@@ -796,19 +797,48 @@
         }catch(e){ return 'http://127.0.0.1:8000'; }
       }
 
+      // Admin credentials are cached after the first prompt so the 20s panel
+      // auto-refresh doesn't re-prompt the user over and over; cleared on 401.
+      let cachedAdminAuth = '';
+      function getAdminAuthHeader(promptLabel){
+        const username = document.querySelector('input[name="username"]')?.value || '';
+        const password = document.querySelector('input[name="password"]')?.value || '';
+        if (username && password) return 'Basic ' + btoa(username + ':' + password);
+        if (cachedAdminAuth) return cachedAdminAuth;
+        const u = prompt(`Admin username for ${promptLabel}:`, 'admin');
+        const p = prompt(`Admin password for ${promptLabel}:`, 'admin');
+        if (!u || !p) return '';
+        cachedAdminAuth = 'Basic ' + btoa(u + ':' + p);
+        return cachedAdminAuth;
+      }
+
+      // Transient network errors (e.g. a Render free-tier backend waking up from
+      // sleep) throw "Failed to fetch" rather than returning an HTTP error, so a
+      // couple of short-delay retries are attempted before giving up.
+      async function fetchWithRetry(url, options, attempts = 3, delayMs = 1500){
+        for (let i = 0; i < attempts; i++){
+          try{
+            return await fetch(url, options);
+          }catch(err){
+            if (i === attempts - 1) throw err;
+            await new Promise(r => setTimeout(r, delayMs));
+          }
+        }
+      }
+
       async function loadCalendar(){
         const statusEl = document.getElementById('calendar-status');
         try{
           const unitParam = selectedUnit ? `?unit=${encodeURIComponent(selectedUnit)}` : '';
           const base = getApiBase();
           const url = base + '/api/bookings' + unitParam;
-          const resp = await fetch(url, { cache: 'no-store', credentials: 'same-origin' });
+          const resp = await fetchWithRetry(url, { cache: 'no-store', credentials: 'same-origin' });
           if (!resp.ok){
             const text = await resp.text().catch(()=>'<no-body>');
             const msg = `Error loading bookings: ${resp.status} ${resp.statusText} - ${text}`;
             console.error(msg);
             if (statusEl) statusEl.textContent = msg;
-            renderCalendar([]);
+            if (!calendarLoadedOnce) renderCalendar([]);
             return;
           }
           const text = await resp.text();
@@ -816,7 +846,7 @@
           try { data = JSON.parse(text); } catch (err) {
             console.error('Invalid JSON from /api/bookings', text);
             if (statusEl) statusEl.textContent = 'Invalid JSON returned from bookings API';
-            renderCalendar([]);
+            if (!calendarLoadedOnce) renderCalendar([]);
             return;
           }
           const bookings = data.bookings || data || [];
@@ -846,8 +876,16 @@
           }catch(e){ console.error('update todays activity', e); }
           populateUnitFilter(events);
           renderCalendar(events);
+          calendarLoadedOnce = true;
           if (statusEl) statusEl.textContent = `Loaded ${events.length} bookings (${new Date().toLocaleTimeString()})`;
-        }catch(e){ console.error('loadCalendar',e); if (statusEl) statusEl.textContent=`Error loading bookings: ${e.message || e}`; renderCalendar([]); }
+        }catch(e){
+          console.error('loadCalendar',e);
+          // keep showing the last successfully loaded calendar instead of blanking it on a transient network blip
+          if (statusEl) statusEl.textContent = calendarLoadedOnce
+            ? `Could not refresh bookings (showing last loaded data): ${e.message || e}`
+            : `Error loading bookings: ${e.message || e}`;
+          if (!calendarLoadedOnce) renderCalendar([]);
+        }
       }
 
       // Diagnostic helper: try multiple fetch variants and report results to the page
@@ -1122,18 +1160,8 @@
           if (navPayroll){
             navPayroll.addEventListener('click', async (ev)=>{
               ev.preventDefault();
-              // attempt to use admin creds from form first
-              const username = document.querySelector('input[name="username"]')?.value || '';
-              const password = document.querySelector('input[name="password"]')?.value || '';
-              let authHeader = '';
-              if (username && password){ authHeader = 'Basic ' + btoa(username + ':' + password); }
-              else {
-                // prompt for admin credentials if not present
-                const u = prompt('Admin username for payroll access:', 'admin');
-                const p = prompt('Admin password for payroll access:', 'admin');
-                if (!u || !p){ alert('Admin credentials required'); return; }
-                authHeader = 'Basic ' + btoa(u + ':' + p);
-              }
+              const authHeader = getAdminAuthHeader('payroll access');
+              if (!authHeader){ alert('Admin credentials required'); return; }
               try{ if (typeof hideCaretaker === 'function') hideCaretaker(); }catch(e){console.error('hideCaretaker before payroll',e);} 
               try{ if (typeof hideAnalytics === 'function') hideAnalytics(); }catch(e){console.error('hideAnalytics before payroll',e);} 
               showPayroll();
@@ -1142,10 +1170,11 @@
               msg.textContent = 'Loading payroll...'; container.innerHTML = '';
               try{
                 const base = getApiBase();
-                const res = await fetch(base + '/api/agent_payroll', { headers: { 'Authorization': authHeader } });
+                const res = await fetchWithRetry(base + '/api/agent_payroll', { headers: { 'Authorization': authHeader } });
                 const txt = await res.text();
                 let data = null;
                 try{ data = JSON.parse(txt); }catch(e){ data = null; }
+                if (res.status === 401) cachedAdminAuth = '';
                 if (!res.ok){
                   msg.textContent = `Error fetching payroll: ${res.status} ${res.statusText}`;
                   if (data && data.detail) msg.textContent += ` - ${data.detail}`;
@@ -1477,16 +1506,8 @@
           navCaretaker.addEventListener('click', async (ev)=>{
             ev.preventDefault();
             // get admin creds similar to payroll
-            const username = document.querySelector('input[name="username"]')?.value || '';
-            const password = document.querySelector('input[name="password"]')?.value || '';
-            let authHeader = '';
-            if (username && password){ authHeader = 'Basic ' + btoa(username + ':' + password); }
-            else {
-              const u = prompt('Admin username for caretaker access:', 'admin');
-              const p = prompt('Admin password for caretaker access:', 'admin');
-              if (!u || !p){ alert('Admin credentials required'); return; }
-              authHeader = 'Basic ' + btoa(u + ':' + p);
-            }
+            const authHeader = getAdminAuthHeader('caretaker access');
+            if (!authHeader){ alert('Admin credentials required'); return; }
             try{ if (typeof hidePayroll === 'function') hidePayroll(); }catch(e){console.error('hidePayroll before caretaker',e);} 
             try{ if (typeof hideAnalytics === 'function') hideAnalytics(); }catch(e){console.error('hideAnalytics before caretaker',e);} 
             showCaretaker();
@@ -1495,9 +1516,10 @@
             msg.textContent = 'Loading caretaker ledger...'; container.innerHTML = '';
             try{
               const base = getApiBase();
-              const res = await fetch(base + '/api/caretaker_ledger', { headers: { 'Authorization': authHeader } });
+              const res = await fetchWithRetry(base + '/api/caretaker_ledger', { headers: { 'Authorization': authHeader } });
               const txt = await res.text();
               let data = null; try{ data = JSON.parse(txt); }catch(e){ data = null; }
+              if (res.status === 401) cachedAdminAuth = '';
               if (!res.ok){ msg.textContent = `Error fetching caretaker ledger: ${res.status} ${res.statusText}`; if (data && data.detail) msg.textContent += ` - ${data.detail}`; return; }
               const rows = (data && data.caretaker_ledger) || [];
               msg.textContent = `Loaded ${rows.length} rows`;
@@ -1555,31 +1577,26 @@
         if (navAnalytics){
           navAnalytics.addEventListener('click', async (ev)=>{
             ev.preventDefault();
-            const username = document.querySelector('input[name="username"]')?.value || '';
-            const password = document.querySelector('input[name="password"]')?.value || '';
-            let authHeader = '';
-            if (username && password){ authHeader = 'Basic ' + btoa(username + ':' + password); }
-            else {
-              const u = prompt('Admin username for analytics access:', 'admin');
-              const p = prompt('Admin password for analytics access:', 'admin');
-              if (!u || !p){ alert('Admin credentials required'); return; }
-              authHeader = 'Basic ' + btoa(u + ':' + p);
-            }
+            const authHeader = getAdminAuthHeader('analytics access');
+            if (!authHeader){ alert('Admin credentials required'); return; }
             try{ if (typeof hidePayroll === 'function') hidePayroll(); }catch(e){}
             try{ if (typeof hideCaretaker === 'function') hideCaretaker(); }catch(e){}
             showAnalytics();
             const msg = document.getElementById('analytics-message');
             const container = document.getElementById('analytics-chart-container');
-            msg.textContent = 'Loading analytics...'; container.innerHTML = '';
+            const hadAnalyticsDataAlready = container.children.length > 0;
+            msg.textContent = 'Loading analytics...'; if (!hadAnalyticsDataAlready) container.innerHTML = '';
             try{
               const base = getApiBase();
-              const res = await fetch(base + '/api/analytics', { headers: { 'Authorization': authHeader } });
+              const res = await fetchWithRetry(base + '/api/analytics', { headers: { 'Authorization': authHeader } });
               const txt = await res.text(); let data = null; try{ data = JSON.parse(txt); }catch(e){ data = null; }
-              if (!res.ok){ msg.textContent = `Error fetching analytics: ${res.status} ${res.statusText}`; if (data && data.detail) msg.textContent += ` - ${data.detail}`; return; }
+              if (res.status === 401) cachedAdminAuth = '';
+              if (!res.ok){ msg.textContent = `Error fetching analytics: ${res.status} ${res.statusText}`; if (data && data.detail) msg.textContent += ` - ${data.detail}`; if (hadAnalyticsDataAlready) msg.textContent += ' (showing last loaded data)'; else container.innerHTML = ''; return; }
               const analytics = (data && data.analytics) || {};
               const monthly = analytics.monthly || [];
-              if (!monthly.length){ msg.textContent = 'No analytics data available.'; return; }
+              if (!monthly.length){ msg.textContent = 'No analytics data available.'; if (!hadAnalyticsDataAlready) container.innerHTML = ''; return; }
               msg.textContent = '';
+              container.innerHTML = '';
               function formatMonthLabel(key){
                 if (!key) return '';
                 const parts = String(key).split('-');
@@ -1737,7 +1754,12 @@
                 { key: 'owner_net', label: '= Net' },
               ]);
 
-            }catch(err){ console.error('loadAnalytics', err); msg.textContent = 'Error loading analytics: '+(err.message||err); }
+            }catch(err){
+              console.error('loadAnalytics', err);
+              msg.textContent = hadAnalyticsDataAlready
+                ? `Could not refresh analytics (showing last loaded data): ${err.message || err}`
+                : `Error loading analytics: ${err.message || err}`;
+            }
           });
         }
         if (analyticsClose) analyticsClose.addEventListener('click', ()=>{ hideAnalytics(); });
