@@ -4,6 +4,7 @@ jinja2
 python-multipart
 gspread
 google-auth
+google-api-python-client
 requests
 icalendar
 python-dotenv

@@ -26,6 +26,45 @@ def _get_gspread_client() -> gspread.Client:
     return gspread.authorize(credentials)
 
 
+def upload_photo_to_drive(file_bytes: bytes, filename: str, content_type: str | None = None) -> str:
+    """Upload a booking photo to Google Drive and return a shareable view link.
+
+    Requires GOOGLE_DRIVE_FOLDER_ID to point to a folder the service account has
+    write access to (ideally a Shared Drive folder — service accounts have no
+    storage quota of their own on regular "My Drive" folders).
+    """
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaIoBaseUpload
+    import io
+
+    credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "credentials.json")
+    credentials = Credentials.from_service_account_file(credentials_path, scopes=SCOPES)
+    drive_service = build("drive", "v3", credentials=credentials, cache_discovery=False)
+
+    folder_id = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
+    file_metadata: dict = {"name": filename}
+    if folder_id:
+        file_metadata["parents"] = [folder_id]
+
+    media = MediaIoBaseUpload(io.BytesIO(file_bytes), mimetype=content_type or "application/octet-stream", resumable=False)
+    created = drive_service.files().create(
+        body=file_metadata,
+        media_body=media,
+        fields="id",
+        supportsAllDrives=True,
+    ).execute()
+    file_id = created["id"]
+
+    # make the file viewable via link so it can be opened straight from the sheet
+    drive_service.permissions().create(
+        fileId=file_id,
+        body={"role": "reader", "type": "anyone"},
+        supportsAllDrives=True,
+    ).execute()
+
+    return f"https://drive.google.com/file/d/{file_id}/view"
+
+
 def _open_or_create_spreadsheet(client: gspread.Client, name: str, owner_email: str | None = None):
     """Open an existing spreadsheet or create it if missing.
 
@@ -186,6 +225,10 @@ def append_booking(booking_summary: dict):
         "contact_number",
         "pax",
         "notes",
+        "car_plate_no",
+        "car_model",
+        "car_color",
+        "photo_link",
     ]
 
     payroll_headers = ["timestamp", "booking_id", "agent_name", "agent_commission", "status"]
@@ -240,6 +283,10 @@ def append_booking(booking_summary: dict):
         booking_summary.get("contact_number", ""),
         booking_summary.get("pax", ""),
         booking_summary.get("notes", ""),
+        booking_summary.get("car_plate_no", ""),
+        booking_summary.get("car_model", ""),
+        booking_summary.get("car_color", ""),
+        booking_summary.get("photo_link", ""),
     ]
 
     try:
@@ -722,13 +769,13 @@ def _write_dashboard_tab(spreadsheet, summary: dict) -> None:
     for m in summary.get("monthly", []):
         rows.append([m["month"], m["bookings"], m["gross_revenue"], m["agent_commission"], m["cleaning_fee"], m["owner_net"]])
 
-    rows += [[], ["Gross and Net per Unit"], ["Unit", "Bookings", "Gross Revenue", "Net Income"]]
+    rows += [[], ["Gross and Net per Unit"], ["Month", "Unit", "Bookings", "Gross Revenue", "Net Income"]]
     for u in summary.get("per_unit", []):
-        rows.append([u["unit_id"], u["bookings"], u["gross_revenue"], u["owner_net"]])
+        rows.append([u.get("month", ""), u["unit_id"], u["bookings"], u["gross_revenue"], u["owner_net"]])
 
-    rows += [[], ["Receivables by Caretaker"], ["Caretaker", "Bookings", "Cash Collected", "Cleaning Fee Owed", "Net Receivable"]]
+    rows += [[], ["Receivables by Caretaker"], ["Month", "Caretaker", "Bookings", "Cash Collected", "Cleaning Fee Owed", "Net Receivable"]]
     for r in summary.get("receivables", []):
-        rows.append([r["caretaker"], r["bookings"], r["cash_collected"], r["cleaning_fee_owed"], r["total_receivable"]])
+        rows.append([r.get("month", ""), r["caretaker"], r["bookings"], r["cash_collected"], r["cleaning_fee_owed"], r["total_receivable"]])
 
     try:
         ws.clear()
@@ -842,31 +889,33 @@ def build_analytics_summary(records: list[dict]) -> dict:
         monthly[key]["owner_net"] += owner_net
         monthly[key]["net_income"] += owner_net
 
-        per_unit.setdefault(unit_id, {
+        per_unit.setdefault((key, unit_id), {
+            "month": key,
             "unit_id": unit_id,
             "bookings": 0,
             "gross_revenue": 0.0,
             "owner_net": 0.0,
             "net_income": 0.0,
         })
-        per_unit[unit_id]["bookings"] += 1
-        per_unit[unit_id]["gross_revenue"] += gross
-        per_unit[unit_id]["owner_net"] += owner_net
-        per_unit[unit_id]["net_income"] += owner_net
+        per_unit[(key, unit_id)]["bookings"] += 1
+        per_unit[(key, unit_id)]["gross_revenue"] += gross
+        per_unit[(key, unit_id)]["owner_net"] += owner_net
+        per_unit[(key, unit_id)]["net_income"] += owner_net
 
-        receivables.setdefault(caretaker, {
+        receivables.setdefault((key, caretaker), {
+            "month": key,
             "caretaker": caretaker,
             "bookings": 0,
             "cleaning_fee_owed": 0.0,
             "cash_collected": 0.0,
             "total_receivable": 0.0,
         })
-        receivables[caretaker]["bookings"] += 1
-        receivables[caretaker]["cleaning_fee_owed"] += cleaning_fee
-        receivables[caretaker]["cash_collected"] += cash_collected
+        receivables[(key, caretaker)]["bookings"] += 1
+        receivables[(key, caretaker)]["cleaning_fee_owed"] += cleaning_fee
+        receivables[(key, caretaker)]["cash_collected"] += cash_collected
         # Receivable from caretaker = cash she collected on the owner's behalf,
         # net of the cleaning fee owed to her (mirrors the xlsx Q column: N + O + P).
-        receivables[caretaker]["total_receivable"] += cash_collected - cleaning_fee
+        receivables[(key, caretaker)]["total_receivable"] += cash_collected - cleaning_fee
 
         bookings_detail.append({
             "booking_id": row.get("booking_id", ""),
@@ -884,10 +933,17 @@ def build_analytics_summary(records: list[dict]) -> dict:
             "balance_payment_method": row.get("balance_payment_method", ""),
         })
 
+    # sort ascending by unit/caretaker first, then descending by month (stable sort
+    # keeps the secondary ordering), so each month's rows list units/caretakers consistently.
+    per_unit_sorted = sorted(per_unit.values(), key=lambda x: x["unit_id"])
+    per_unit_sorted = sorted(per_unit_sorted, key=lambda x: x["month"], reverse=True)
+    receivables_sorted = sorted(receivables.values(), key=lambda x: x["caretaker"])
+    receivables_sorted = sorted(receivables_sorted, key=lambda x: x["month"], reverse=True)
+
     return {
         "monthly": sorted(monthly.values(), key=lambda x: x["month"]),
-        "per_unit": sorted(per_unit.values(), key=lambda x: x["unit_id"]),
-        "receivables": sorted(receivables.values(), key=lambda x: x["caretaker"]),
+        "per_unit": per_unit_sorted,
+        "receivables": receivables_sorted,
         "bookings": sorted(bookings_detail, key=lambda x: str(x["check_in"]), reverse=True),
     }
 

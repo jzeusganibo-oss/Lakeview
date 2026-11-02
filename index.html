@@ -165,8 +165,23 @@
                 </label>
 
                 <label class="block text-sm font-medium text-slate-700">
-                  Parking Fee <span class="font-normal text-slate-400">(optional)</span>
-                  <input type="number" step="0.01" name="parking_fee" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" placeholder="0.00" />
+                  Parking Fee <span class="font-normal text-slate-400">(optional — only 1 parking slot available)</span>
+                  <input type="number" step="0.01" name="parking_fee" id="parking-fee-input" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" placeholder="0.00" />
+                </label>
+              </div>
+
+              <div id="car-details-fields" class="grid gap-4 md:grid-cols-3" style="display:none;">
+                <label class="block text-sm font-medium text-slate-700">
+                  Car Plate No.
+                  <input type="text" name="car_plate_no" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" placeholder="ABC 1234" />
+                </label>
+                <label class="block text-sm font-medium text-slate-700">
+                  Car Model
+                  <input type="text" name="car_model" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" placeholder="e.g. Toyota Vios" />
+                </label>
+                <label class="block text-sm font-medium text-slate-700">
+                  Car Color
+                  <input type="text" name="car_color" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" placeholder="e.g. White" />
                 </label>
               </div>
 
@@ -204,6 +219,11 @@
               <label class="block text-sm font-medium text-slate-700">
                 Notes <span class="font-normal text-slate-400">(optional)</span>
                 <textarea name="notes" rows="2" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-600" placeholder="Any special requests or remarks"></textarea>
+              </label>
+
+              <label class="block text-sm font-medium text-slate-700">
+                Photo <span class="font-normal text-slate-400">(optional — saved to Google Drive)</span>
+                <input type="file" name="photo" accept="image/*" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-600" />
               </label>
 
               <input type="hidden" name="username" />
@@ -427,6 +447,20 @@
         if (input) input.addEventListener('input', updateBalancePreview);
       });
       if (balanceInput) balanceInput.addEventListener('input', ()=>{ balanceManuallyEdited = true; });
+
+      // Car details are only required when a parking fee is entered (only 1 parking slot exists).
+      const parkingFeeInput = document.getElementById('parking-fee-input');
+      const carDetailsFields = document.getElementById('car-details-fields');
+      function updateCarDetailsVisibility(){
+        const parkingFee = parseFloat(parkingFeeInput?.value) || 0;
+        const isParkingAvailed = parkingFee > 0;
+        if (carDetailsFields) carDetailsFields.style.display = isParkingAvailed ? '' : 'none';
+        carDetailsFields?.querySelectorAll('input').forEach(input=>{
+          input.required = isParkingAvailed;
+          if (!isParkingAvailed) input.value = '';
+        });
+      }
+      if (parkingFeeInput) parkingFeeInput.addEventListener('input', updateCarDetailsVisibility);
 
       // Booking summary/edit modal — clicking a booking in the calendar opens this pre-filled form.
       const bookingEditModal = document.getElementById('booking-edit-modal');
@@ -869,9 +903,11 @@
           }
 
           const result = json || {};
-          messageBox.textContent = `Booking created: ${result.booking?.booking_id || result.booking_id || ''}`;
-          messageBox.className='rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700';
-          form.reset(); loadCalendar(); balanceManuallyEdited = false; updateBalancePreview();
+          messageBox.textContent = `Booking created: ${result.booking?.booking_id || result.booking_id || ''}${result.warning ? ' — ' + result.warning : ''}`;
+          messageBox.className = result.warning
+            ? 'rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700'
+            : 'rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700';
+          form.reset(); loadCalendar(); balanceManuallyEdited = false; updateBalancePreview(); updateCarDetailsVisibility();
         }catch(err){
           console.error('Booking create network error', err);
           const msg = err && err.message ? err.message : String(err);
@@ -1540,6 +1576,13 @@
               const monthly = analytics.monthly || [];
               if (!monthly.length){ msg.textContent = 'No analytics data available.'; return; }
               msg.textContent = '';
+              function formatMonthLabel(key){
+                if (!key) return '';
+                const parts = String(key).split('-');
+                if (parts.length < 2) return String(key);
+                const d = new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1, 1);
+                return d.toLocaleString(undefined,{month:'short',year:'numeric'});
+              }
               // build labels and datasets
               const labels = monthly.map(m=>{ const parts = m.month.split('-'); const d = new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1,1); return d.toLocaleString(undefined,{month:'short',year:'numeric'}); });
               const bookings = monthly.map(m=>m.bookings||0);
@@ -1647,16 +1690,18 @@
               renderBarChart(container, 'Gross Revenue per Month', labels, revenue, revenuePrev, { color: '#2563eb', formatValue: v=>new Intl.NumberFormat(undefined,{style:'currency',currency:'PHP'}).format(v) });
               renderBarChart(container, 'Net Income per Month', labels, netIncome, netIncomePrev, { color: '#15803d', formatValue: v=>new Intl.NumberFormat(undefined,{style:'currency',currency:'PHP'}).format(v) });
 
-              const perUnitRows = analytics.per_unit || [];
+              const perUnitRows = (analytics.per_unit || []).map(r => ({ ...r, month: formatMonthLabel(r.month) }));
               renderSummaryTable(container, 'Gross and Net per Unit', perUnitRows, [
+                { key: 'month', label: 'Month' },
                 { key: 'unit_id', label: 'Unit' },
                 { key: 'bookings', label: 'Bookings' },
                 { key: 'gross_revenue', label: 'Gross' },
                 { key: 'owner_net', label: 'Net' },
               ]);
 
-              const receivableRows = analytics.receivables || [];
+              const receivableRows = (analytics.receivables || []).map(r => ({ ...r, month: formatMonthLabel(r.month) }));
               renderSummaryTable(container, 'Receivables by Caretaker', receivableRows, [
+                { key: 'month', label: 'Month' },
                 { key: 'caretaker', label: 'Caretaker' },
                 { key: 'bookings', label: 'Bookings' },
                 { key: 'cash_collected', label: 'Cash Collected' },

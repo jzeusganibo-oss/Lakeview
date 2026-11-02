@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, Form, HTTPException, Depends, Header
+from fastapi import FastAPI, Form, HTTPException, Depends, Header, File, UploadFile
 from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from services.calculator import process_booking
 from services.sheets_engine import append_booking
+from services.sheets_engine import upload_photo_to_drive
 from services.sheets_engine import get_all_bookings
 from services.sheets_engine import get_agent_payroll
 from services.sheets_engine import update_agent_payroll_status
@@ -213,6 +214,12 @@ def validate_booking_input(data: dict) -> dict:
     if len(notes) > 1000:
         raise ValueError("notes is too long")
 
+    car_plate_no = str(data.get("car_plate_no", "")).strip()
+    car_model = str(data.get("car_model", "")).strip()
+    car_color = str(data.get("car_color", "")).strip()
+    if parking_fee > 0 and not (car_plate_no and car_model and car_color):
+        raise ValueError("car_plate_no, car_model, and car_color are required when parking is availed")
+
     return {
         "unit_id": unit_id,
         "check_in": data["check_in"],
@@ -227,7 +234,41 @@ def validate_booking_input(data: dict) -> dict:
         "contact_number": contact_number,
         "pax": pax,
         "notes": notes,
+        "car_plate_no": car_plate_no,
+        "car_model": car_model,
+        "car_color": car_color,
     }
+
+
+def _check_parking_conflict(check_in: str, check_out: str, exclude_booking_id: Optional[str] = None) -> bool:
+    """There is only 1 parking slot: return True if it's already booked on an overlapping date."""
+    try:
+        new_in = datetime.strptime(check_in, "%Y-%m-%d").date()
+        new_out = datetime.strptime(check_out, "%Y-%m-%d").date()
+    except ValueError:
+        return False
+
+    try:
+        bookings = get_all_bookings()
+    except Exception:
+        logger.exception('failed to check parking conflicts')
+        return False
+
+    for b in bookings:
+        if exclude_booking_id and str(b.get("booking_id")) == str(exclude_booking_id):
+            continue
+        if str(b.get("status", "")).strip().lower() == "cancelled":
+            continue
+        try:
+            if float(b.get("parking_fee") or 0) <= 0:
+                continue
+            existing_in = datetime.strptime(str(b.get("check_in")), "%Y-%m-%d").date()
+            existing_out = datetime.strptime(str(b.get("check_out")), "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            continue
+        if existing_in < new_out and existing_out > new_in:
+            return True
+    return False
 
 
 @app.get("/")
@@ -382,6 +423,9 @@ def _build_booking_result(validated_data: dict) -> dict:
     booking_result["contact_number"] = validated_data.get("contact_number", "")
     booking_result["pax"] = validated_data.get("pax")
     booking_result["notes"] = validated_data.get("notes", "")
+    booking_result["car_plate_no"] = validated_data.get("car_plate_no", "")
+    booking_result["car_model"] = validated_data.get("car_model", "")
+    booking_result["car_color"] = validated_data.get("car_color", "")
     return booking_result
 
 
@@ -410,6 +454,10 @@ def create_booking(
     contact_number: str = Form(""),
     pax: Optional[str] = Form(None),
     notes: str = Form(""),
+    car_plate_no: str = Form(""),
+    car_model: str = Form(""),
+    car_color: str = Form(""),
+    photo: Optional[UploadFile] = File(None),
     actor: dict = Depends(get_actor),
 ):
     try:
@@ -428,8 +476,13 @@ def create_booking(
                 "contact_number": contact_number,
                 "pax": pax,
                 "notes": notes,
+                "car_plate_no": car_plate_no,
+                "car_model": car_model,
+                "car_color": car_color,
             }
         )
+        if validated_data["parking_fee"] > 0 and _check_parking_conflict(validated_data["check_in"], validated_data["check_out"]):
+            raise ValueError("Parking slot is already booked for an overlapping date")
         booking_result = _build_booking_result(validated_data)
         booking_result["status"] = "Pending"
         _maybe_mark_fully_paid(booking_result)
@@ -441,14 +494,28 @@ def create_booking(
         else:
             booking_result['created_by'] = actor.get('name')
 
+        photo_warning = None
+        if photo is not None and photo.filename:
+            try:
+                file_bytes = photo.file.read()
+                if file_bytes:
+                    booking_result["photo_link"] = upload_photo_to_drive(file_bytes, photo.filename, photo.content_type)
+            except Exception:
+                logger.exception('failed to upload booking photo')
+                photo_warning = "Booking was created, but the photo could not be uploaded to Google Drive."
+
         append_booking(booking_result)
+
+        response_content = {
+            "message": "Booking created successfully",
+            "booking": booking_result,
+        }
+        if photo_warning:
+            response_content["warning"] = photo_warning
 
         return JSONResponse(
             status_code=201,
-            content={
-                "message": "Booking created successfully",
-                "booking": booking_result,
-            },
+            content=response_content,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
