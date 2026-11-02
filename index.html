@@ -1527,21 +1527,23 @@
               msg.textContent = `Loaded ${rows.length} rows`;
               if (!rows.length){ container.innerHTML = '<div class="text-sm text-slate-500 mt-2">No caretaker entries found.</div>'; return; }
 
-              // monthly summary and per-caretaker totals
+              // monthly summary and per-caretaker totals, plus a shared month filter reused by the details table below
+              const now = new Date();
+              const monthSelectId = 'caretaker-month-select';
+              let monthSelect = document.getElementById(monthSelectId);
+              if (!monthSelect){
+                monthSelect = document.createElement('select'); monthSelect.id = monthSelectId; monthSelect.className='mt-2 rounded border p-2';
+                const months = [];
+                for (let i=0;i<12;i++){ const d = new Date(now.getFullYear(), now.getMonth()-i, 1); months.push(d); }
+                months.forEach(d=>{ const v = `${d.getFullYear()}-${pad(d.getMonth()+1)}`; const label = `${d.toLocaleString('default',{month:'long'})} ${d.getFullYear()}`; const o = document.createElement('option'); o.value = v; o.textContent = label; monthSelect.appendChild(o); });
+                container.parentNode.insertBefore(monthSelect, container);
+              }
+              const sel = (monthSelect && monthSelect.value) || `${now.getFullYear()}-${pad(now.getMonth()+1)}`;
+              const [selY, selM] = sel.split('-').map(x=>parseInt(x,10));
+              const rowsThisMonth = rows.filter(r=>{ const ts = r.timestamp || r.date || ''; const d = normalizeDateString(ts) || normalizeDateString((ts||'').slice(0,10)); if (!d) return false; return d.getFullYear()===selY && d.getMonth()+1===selM; });
+              const selectedMonthLabel = monthSelect ? monthSelect.options[monthSelect.selectedIndex].text : (now.toLocaleString('default',{month:'long'})+' '+now.getFullYear());
+
               try{
-                const now = new Date();
-                const monthSelectId = 'caretaker-month-select';
-                let monthSelect = document.getElementById(monthSelectId);
-                if (!monthSelect){
-                  monthSelect = document.createElement('select'); monthSelect.id = monthSelectId; monthSelect.className='mt-2 rounded border p-2';
-                  const months = [];
-                  for (let i=0;i<12;i++){ const d = new Date(now.getFullYear(), now.getMonth()-i, 1); months.push(d); }
-                  months.forEach(d=>{ const v = `${d.getFullYear()}-${pad(d.getMonth()+1)}`; const label = `${d.toLocaleString('default',{month:'long'})} ${d.getFullYear()}`; const o = document.createElement('option'); o.value = v; o.textContent = label; monthSelect.appendChild(o); });
-                  container.parentNode.insertBefore(monthSelect, container);
-                }
-                const sel = (monthSelect && monthSelect.value) || `${now.getFullYear()}-${pad(now.getMonth()+1)}`;
-                const [selY, selM] = sel.split('-').map(x=>parseInt(x,10));
-                const rowsThisMonth = rows.filter(r=>{ const ts = r.timestamp || r.date || ''; const d = normalizeDateString(ts) || normalizeDateString((ts||'').slice(0,10)); if (!d) return false; return d.getFullYear()===selY && d.getMonth()+1===selM; });
                 const caretakerTotals = {}; const toFloat = v=>{ const n = parseFloat(String(v).replace(/[^0-9.\-]/g,'')); return Number.isFinite(n)?n:0; };
                 rowsThisMonth.forEach(r=>{ const name = (r.caretaker || 'Unknown'); const amt = toFloat(r.cleaning_fee || 0); caretakerTotals[name] = (caretakerTotals[name] || 0) + amt; });
                 const total = Object.values(caretakerTotals).reduce((s,v)=>s+v,0);
@@ -1552,7 +1554,7 @@
                 const left = document.createElement('div'); left.className='rounded-lg border p-4 bg-amber-50'; left.innerHTML = `<p class="text-sm font-medium text-amber-700">Total cleaning fees (this month)</p><p class="mt-2 text-2xl font-semibold text-amber-900">${fmt(total)}</p>`;
                 const right = document.createElement('div'); right.className='rounded-lg border p-4 bg-white';
                 const sorted = Object.entries(caretakerTotals).sort((a,b)=>b[1]-a[1]);
-                let cardsHtml = `<div class="flex items-center justify-between"><p class="text-sm font-medium text-slate-700">Per caretaker (${escapeHTML(monthSelect ? monthSelect.options[monthSelect.selectedIndex].text : (now.toLocaleString('default',{month:'long'})+' '+now.getFullYear()))})</p></div><div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3" id="per-caretaker-list">`;
+                let cardsHtml = `<div class="flex items-center justify-between"><p class="text-sm font-medium text-slate-700">Per caretaker (${escapeHTML(selectedMonthLabel)})</p></div><div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3" id="per-caretaker-list">`;
                 const top = sorted.length? sorted[0][0]:null;
                 sorted.forEach(([name,amt])=>{ const isTop = (name===top); const bg = isTop?'bg-amber-50':'bg-white'; const color = isTop?'text-amber-900':'text-emerald-900'; if (isTop) { cardsHtml += `<div class="rounded-lg border p-6 ${bg} sm:col-span-2"><div class="text-sm text-slate-700">${escapeHTML(name)}</div><div class="mt-3 ${color} text-3xl font-bold">${fmt(amt)}</div></div>`; } else { cardsHtml += `<div class="rounded-lg border p-4 ${bg}"><div class="text-sm text-slate-700">${escapeHTML(name)}</div><div class="mt-2 ${color} text-2xl font-semibold">${fmt(amt)}</div></div>`; } });
                 cardsHtml += '</div>';
@@ -1561,11 +1563,16 @@
                 summaryDiv.appendChild(left); summaryDiv.appendChild(right); container.appendChild(summaryDiv);
               }catch(err){ console.error('caretaker summary', err); }
 
-              // render details table
+              // render details table, filtered to the selected month (same filter as the summary above)
+              const tableHeading = document.createElement('p'); tableHeading.className = 'text-sm font-medium text-slate-700 mt-4 mb-2'; tableHeading.textContent = `Entries for ${selectedMonthLabel} (${rowsThisMonth.length})`;
+              container.appendChild(tableHeading);
               const table = document.createElement('table'); table.className='w-full text-sm';
-              const thead = document.createElement('thead'); thead.innerHTML = '<tr class="text-left text-slate-600"><th class="p-2">Timestamp</th><th class="p-2">Booking ID</th><th class="p-2">Caretaker</th><th class="p-2">Cleaning Fee</th><th class="p-2">Status</th></tr>';
+              const thead = document.createElement('thead'); thead.innerHTML = '<tr class="text-left text-slate-600"><th class="p-2">Timestamp</th><th class="p-2">Unit</th><th class="p-2">Booking Date</th><th class="p-2">Caretaker</th><th class="p-2">Cleaning Fee</th><th class="p-2">Status</th></tr>';
               table.appendChild(thead);
-              const tbody = document.createElement('tbody'); rows.forEach(r=>{ const tr = document.createElement('tr'); tr.innerHTML = `<td class="p-2">${escapeHTML(r.timestamp||r.date||'')}</td><td class="p-2">${escapeHTML(r.booking_id||'')}</td><td class="p-2">${escapeHTML(r.caretaker||'')}</td><td class="p-2">${escapeHTML(r.cleaning_fee||'')}</td><td class="p-2">${escapeHTML(r.status||'')}</td>`; tbody.appendChild(tr); }); table.appendChild(tbody); container.appendChild(table);
+              if (!rowsThisMonth.length){ container.appendChild(table); const emptyRow = document.createElement('div'); emptyRow.className = 'text-sm text-slate-500 mt-2'; emptyRow.textContent = `No caretaker entries for ${selectedMonthLabel}.`; container.appendChild(emptyRow); }
+              else {
+                const tbody = document.createElement('tbody'); rowsThisMonth.forEach(r=>{ const tr = document.createElement('tr'); tr.innerHTML = `<td class="p-2">${escapeHTML(r.timestamp||r.date||'')}</td><td class="p-2">${escapeHTML(r.unit_id||'')}</td><td class="p-2">${escapeHTML(r.check_in||'')}</td><td class="p-2">${escapeHTML(r.caretaker||'')}</td><td class="p-2">${escapeHTML(r.cleaning_fee||'')}</td><td class="p-2">${escapeHTML(r.status||'')}</td>`; tbody.appendChild(tr); }); table.appendChild(tbody); container.appendChild(table);
+              }
             }catch(err){ console.error('loadCaretakerLedger', err); msg.textContent = 'Error loading caretaker ledger: '+(err.message||err); }
           });
         }

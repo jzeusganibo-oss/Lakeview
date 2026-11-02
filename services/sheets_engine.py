@@ -1278,8 +1278,17 @@ def get_caretaker_ledger() -> list[dict]:
         for row in data_rows:
             record = {headers[i] if i < len(headers) else f"col_{i}": (row[i] if i < len(row) else "") for i in range(len(headers))}
             records.append(record)
-        return records
     except Exception:
         return []
 
-    return results
+    try:
+        bookings = get_all_bookings()
+        booking_lookup = {str(b.get("booking_id", "")).strip(): b for b in bookings}
+    except Exception:
+        booking_lookup = {}
+    for record in records:
+        booking = booking_lookup.get(str(record.get("booking_id", "")).strip(), {})
+        record["unit_id"] = booking.get("unit_id", "")
+        record["check_in"] = booking.get("check_in", "")
+
+    return records
