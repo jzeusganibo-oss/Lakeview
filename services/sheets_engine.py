@@ -182,6 +182,10 @@ def append_booking(booking_summary: dict):
         "balance",
         "balance_payment_method",
         "paid_balance",
+        "guest_name",
+        "contact_number",
+        "pax",
+        "notes",
     ]
 
     payroll_headers = ["timestamp", "booking_id", "agent_name", "agent_commission", "status"]
@@ -232,6 +236,10 @@ def append_booking(booking_summary: dict):
         booking_summary.get("balance", ""),
         booking_summary.get("balance_payment_method", ""),
         booking_summary.get("paid_balance", ""),
+        booking_summary.get("guest_name", ""),
+        booking_summary.get("contact_number", ""),
+        booking_summary.get("pax", ""),
+        booking_summary.get("notes", ""),
     ]
 
     try:

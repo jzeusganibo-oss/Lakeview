@@ -196,6 +196,23 @@ def validate_booking_input(data: dict) -> dict:
     balance = data.get("balance")
     balance = float(balance) if balance not in (None, "") else None
 
+    guest_name = str(data.get("guest_name", "")).strip()
+    if len(guest_name) > 150:
+        raise ValueError("guest_name is too long")
+
+    contact_number = str(data.get("contact_number", "")).strip()
+    if len(contact_number) > 30:
+        raise ValueError("contact_number is too long")
+
+    pax = data.get("pax")
+    pax = int(pax) if pax not in (None, "") else None
+    if pax is not None and pax < 1:
+        raise ValueError("pax must be at least 1")
+
+    notes = str(data.get("notes", "")).strip()
+    if len(notes) > 1000:
+        raise ValueError("notes is too long")
+
     return {
         "unit_id": unit_id,
         "check_in": data["check_in"],
@@ -206,6 +223,10 @@ def validate_booking_input(data: dict) -> dict:
         "reservation_fee": reservation_fee,
         "payment_method": payment_method,
         "balance": balance,
+        "guest_name": guest_name,
+        "contact_number": contact_number,
+        "pax": pax,
+        "notes": notes,
     }
 
 
@@ -357,6 +378,10 @@ def _build_booking_result(validated_data: dict) -> dict:
     # allow the agent to override the computed balance (e.g. partial payments already settled)
     computed_balance = booking_result["gross_revenue"] - validated_data["reservation_fee"]
     booking_result["balance"] = validated_data["balance"] if validated_data["balance"] is not None else computed_balance
+    booking_result["guest_name"] = validated_data.get("guest_name", "")
+    booking_result["contact_number"] = validated_data.get("contact_number", "")
+    booking_result["pax"] = validated_data.get("pax")
+    booking_result["notes"] = validated_data.get("notes", "")
     return booking_result
 
 
@@ -381,6 +406,10 @@ def create_booking(
     reservation_fee: Optional[str] = Form(None),
     payment_method: str = Form(""),
     balance: Optional[str] = Form(None),
+    guest_name: str = Form(""),
+    contact_number: str = Form(""),
+    pax: Optional[str] = Form(None),
+    notes: str = Form(""),
     actor: dict = Depends(get_actor),
 ):
     try:
@@ -395,6 +424,10 @@ def create_booking(
                 "reservation_fee": reservation_fee,
                 "payment_method": payment_method,
                 "balance": balance,
+                "guest_name": guest_name,
+                "contact_number": contact_number,
+                "pax": pax,
+                "notes": notes,
             }
         )
         booking_result = _build_booking_result(validated_data)
